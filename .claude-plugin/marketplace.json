@@ -1,0 +1,19 @@
+{
+  "name": "poseidon-marketplace",
+  "owner": {
+    "name": "HackNerd1"
+  },
+  "metadata": {
+    "description": "Poseidon — Claude Code 插件大仓，覆盖软考备考、开发提效、生活自动化等多场景"
+  },
+  "plugins": [
+    {
+      "name": "ruankao",
+      "source": "./plugins/ruankao",
+      "description": "软考系统分析师论文备考工具集 — 论文写作、优化、帮记词生成、TTS 音频合成",
+      "version": "0.1.0",
+      "category": "education",
+      "tags": ["ruankao", "软考", "论文", "系统分析师", "备考"]
+    }
+  ]
+}
