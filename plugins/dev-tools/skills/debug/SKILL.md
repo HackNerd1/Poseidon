@@ -1,113 +1,113 @@
 ---
 name: debug
-description: 诊断式 Debug 工作流。当用户提供日志、描述 Bug 现象、报告白屏/渲染异常/数据不符预期等运行时问题时触发。适用场景：导入日志分析 Bug、canvas 渲染白屏、数据与预期不符、音视频播放异常、第三方库集成调试。
-arguments: [<Bug 描述或日志路径>]
+description: Diagnostic debug workflow. Triggers when users provide logs, describe bug symptoms, report white screen / render anomalies / data mismatches, or other runtime issues. Use cases: log-based bug analysis, canvas rendering blank, data vs expected mismatch, audio/video playback issues, third-party library debugging.
+arguments: [<bug description or log path>]
 ---
 
-# 诊断式 Debug 工作流
+# Diagnostic Debug Workflow
 
-## 概述
+## Overview
 
-你将按照严谨的诊断流程帮助用户排查 Bug。核心原则：**先理解，再假设，后验证，最后修复**。禁止跳过信息收集步骤直接猜测或修改代码。
+You will follow a rigorous diagnostic process to help users troubleshoot bugs. Core principle: **understand first, hypothesize second, verify third, fix last**. Do not skip information-gathering steps to guess or modify code directly.
 
-## 工作流
+## Workflow
 
-### 第一步：收集信息
+### Step 1: Collect Information
 
-首先向用户索要以下信息（至少收集一项再进入下一步）：
+First, ask the user for the following (collect at least one item before proceeding):
 
-1. **控制台日志**（浏览器 Console / 终端输出）
-2. **错误堆栈**（如有报错）
-3. **复现步骤**：做了什么操作、期望什么结果、实际看到什么结果
-4. **环境信息**：浏览器版本、Node 版本、依赖版本等（如相关）
+1. **Logs** (browser Console / terminal output)
+2. **Error stack traces** (if any)
+3. **Reproduction steps**: what actions were taken, expected vs actual results
+4. **Environment info**: browser version, runtime version, dependency versions (if relevant)
 
-如果用户已经提供了日志文件路径，先 Read 该文件全文。
+If the user has provided a log file path, Read the full file first.
 
-### 第二步：评估日志充分性
+### Step 2: Assess Log Sufficiency
 
-阅读用户提供的日志后，判断：
+After reading the provided logs, determine:
 
-- 日志是否覆盖了关键路径？（数据加载 → 处理 → 渲染的完整链路）
-- 关键变量值是否有记录？（状态值、参数、返回值）
-- 错误发生点的上下文是否足够？
+- Do the logs cover the critical path? (full chain: data load → processing → output)
+- Are key variable values recorded? (state values, parameters, return values)
+- Is there enough context around the error point?
 
-**如果日志不充分**，明确告知用户缺少哪些环节的日志，并询问：
+**If logs are insufficient**, clearly tell the user which parts are missing and ask:
 
-> 当前日志缺少 [具体环节] 的信息，无法判断问题根因。是否需要我在代码中补充日志以捕获 [具体数据]？
+> The current logs lack information about [specific stage], making it impossible to determine the root cause. Should I add logging to the code to capture [specific data]?
 
-得到用户同意后再添加日志。添加日志时遵循 `references/logging-guide.md` 中的规范。
+Only add logs after the user agrees. Follow the conventions in `references/logging-guide.md` when adding logs.
 
-### 第三步：定位与分析
+### Step 3: Locate & Analyze
 
-收集足够信息后，按以下顺序分析：
+Once sufficient information is gathered, analyze in this order:
 
-1. **追溯数据流**：从入口到出错点，逐步追踪数据变化
-2. **定位异常点**：找出数据首次偏离预期的位置
-3. **列出可能原因**（按可能性从高到低排列）：
+1. **Trace the data flow**: step through data changes from entry point to the failure point
+2. **Identify the anomaly**: find where data first deviates from expected values
+3. **List possible causes** (ranked by likelihood):
 
 ```
-可能原因分析：
+Possible causes:
 
-1. [最可能的原因] — 证据：[日志/代码中的具体证据]
-2. [次可能的原因] — 证据：[日志/代码中的具体证据]
-3. [其他可能] — 证据：[日志/代码中的具体证据]
+1. [Most likely cause] — Evidence: [specific evidence from logs/code]
+2. [Second most likely] — Evidence: [specific evidence from logs/code]
+3. [Other possibilities] — Evidence: [specific evidence from logs/code]
 ```
 
-**在此步骤禁止修改代码**。只做分析和列出原因。
+**Do not modify code in this step.** Only analyze and list causes.
 
-### 第四步：记录问题（可选）
+### Step 4: Record the Issue (Optional)
 
-分析完成后询问用户：
+After analysis, ask the user:
 
-> 是否需要将此问题记录到 `docs/issues/` 下？记录内容包括：问题现象、根因分析、修复方案。
+> Should I record this issue to `docs/issues/`? The record will include: symptom, root cause analysis, and fix approach.
 
-如用户同意，将问题记录为 `docs/issues/<yyyy-mm-dd>-<简短描述>.md`。
+If the user agrees, write the issue to `docs/issues/<yyyy-mm-dd>-<short-description>.md`.
 
-### 第五步：等待修复指令
+### Step 5: Wait for Fix Instruction
 
-列出可能原因后，**等待用户明确要求修复**再执行代码修改。不要主动修改。
+After listing possible causes, **wait for the user to explicitly request a fix** before modifying code. Do not modify proactively.
 
-用户确认修复方向后：
-1. 说明将要修改的文件和具体改动
-2. 执行修改
-3. 修改完成后，如果涉及 UI 变更，提示用户刷新/重启验证
+Once the user confirms the fix direction:
+1. Describe which files will be changed and the specific modifications
+2. Execute the changes
+3. If UI is involved, remind the user to refresh/restart to verify
 
-### 第六步：验证
+### Step 6: Verify
 
-修复完成后，指导用户验证：
+After the fix, guide the user to verify:
 
-1. 复现原 Bug 场景，确认问题消失
-2. 检查相关功能是否有回归
-3. 确认控制台无新增报错
+1. Reproduce the original bug scenario — confirm it no longer occurs
+2. Check related functionality for regressions
+3. Confirm no new errors in console/terminal
 
-### 第七步：日志清理
+### Step 7: Log Cleanup
 
-验证通过后询问用户：
+After verification passes, ask the user:
 
-> 验证通过。是否需要清理诊断过程中添加的调试日志？
+> Verification passed. Should I clean up the debug logs added during diagnosis?
 
-- **用户选择清理**：移除本次添加的所有调试日志语句，保持代码干净
-- **用户选择保留**：结束工作流
+- **User chooses cleanup**: remove all debug log statements added during this session, keeping the code clean
+- **User chooses keep**: end the workflow
 
-## 关键规则
+## Key Rules
 
-1. **先问后看**：没有日志就不做猜测，先索要日志
-2. **不跳步诊断**：信息不足时优先补充日志，禁止凭经验猜原因
-3. **只列原因不修改**：第三步只输出可能原因列表，不执行任何代码修改
-4. **等待明确指令**：必须在用户说"修"/"改"/"fix"等明确指令后才改代码
-5. **最小改动**：只改与问题直接相关的代码，不做顺手重构
-6. **日志可逆**：诊断日志用完即删，不留痕迹
-7. **记录可追溯**：如用户同意，将问题记录到 docs/issues/ 便于后续回顾
+1. **Ask before guessing**: never speculate without logs — ask for logs first
+2. **Don't skip diagnostic steps**: when information is insufficient, prioritize adding logs over guessing from experience
+3. **List causes only, don't modify**: Step 3 only outputs a list of possible causes — no code changes
+4. **Wait for explicit instruction**: only modify code after the user says "fix" / "change" / "modify" or equivalent
+5. **Minimal changes**: only modify code directly related to the issue — no opportunistic refactoring
+6. **Reversible logging**: debug logs are temporary — remove them when done, leave no trace
+7. **Traceable records**: when the user agrees, record issues to docs/issues/ for future reference
 
-## 边界情况
+## Edge Cases
 
-- **用户拒绝添加日志**：基于现有信息给出分析，但明确指出结论的置信度受限于日志不完整
-- **问题涉及多个模块**：逐模块分析，从最可能出错的模块开始
-- **偶发/难以复现**：建议添加持久化日志（如 localStorage 日志缓冲区）以捕获下次发生
-- **第三方库问题**：先排除自身代码问题，再检查第三方库版本和已知 issue
+- **User refuses to add logs**: provide analysis based on available information, but clearly state the confidence level is limited by incomplete logs
+- **Issue spans multiple modules**: analyze module by module, starting from the most likely source of error
+- **Intermittent / hard to reproduce**: suggest adding persistent logging (e.g. ring buffer, file-based log buffer) to capture the next occurrence
+- **Third-party library issue**: rule out own code first, then check library version and known issues
 
-## 限制
+## Limitations
 
-- 不适用于编译时错误（语法错误、类型错误）—— 这些通常直接有明确错误信息
-- 不适用于性能优化 —— 性能问题需要 profiling 而非 debug 工作流
-- 不适用于架构设计评审
+- Not applicable to compile-time errors (syntax errors, type errors) — these usually have clear error messages
+- Not applicable to performance optimization — performance issues require profiling, not this debug workflow
+- Not applicable to architecture design reviews

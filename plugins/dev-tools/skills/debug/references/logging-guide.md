@@ -1,61 +1,61 @@
-# 日志补充指南
+# Logging Supplement Guide
 
-当现有日志不足以定位问题时，按以下规范在代码中补充日志。
+When existing logs are insufficient to locate the issue, add logs to the code following these conventions.
 
-## 日志添加原则
+## Log Placement Principles
 
-### 关键位置
+### Key Insertion Points
 
-在数据流的关键节点添加日志：
+Add logs at critical nodes in the data flow:
 
-| 节点 | 日志内容 | 示例 |
-|------|---------|------|
-| 入口/输入 | 原始数据摘要（类型、大小/长度、前几条记录预览） | `[load] type=..., size=..., preview=...` |
-| 数据转换 | 转换前后关键字段的值变化 | `[transform] before=..., after=...` |
-| 状态变更 | 状态名、旧值 → 新值 | `[state] prev=..., next=...` |
-| 渲染/输出 | 输出目标参数 | `[render] target=..., params=...` |
-| 外部调用 | 请求参数摘要 + 响应摘要 | `[api] method=..., url=..., status=..., bodyPreview=...` |
-| 异常/错误 | 完整错误信息 + 发生时的关键上下文 | `[error] message=..., context=...` |
+| Node | What to Log | Example Format |
+|------|------------|----------------|
+| Entry / Input | Raw data summary (type, size/length, first few records) | `[load] type=..., size=..., preview=...` |
+| Data Transformation | Key field values before and after transformation | `[transform] before=..., after=...` |
+| State Change | State name, old value → new value | `[state] prev=..., next=...` |
+| Render / Output | Output target and parameters | `[render] target=..., params=...` |
+| External Call | Request summary + response summary | `[api] method=..., url=..., status=..., bodyPreview=...` |
+| Exception / Error | Full error info + key context at failure point | `[error] message=..., context=...` |
 
-### 格式规范
+### Format Convention
 
-无论什么语言，遵循统一格式：
-
-```
-✅ 好的日志：结构化、带标签、包含决策所需的关键数据
-  格式: [模块.操作] key1=value1, key2=value2, ...
-
-❌ 差的日志：无上下文、值不明确
-```
-
-### 日志级别
-
-| 级别 | 用途 | 通用名称 |
-|------|------|---------|
-| 调试/追踪 | 正常流程追踪 | `debug` / `trace` / `log` |
-| 警告 | 异常但可恢复 | `warn` / `warning` |
-| 错误 | 错误和异常 | `error` / `fatal` |
-
-### 标签约定
-
-使用 `[模块.操作]` 格式标记日志来源：
-
-- `[Player.init]` — 播放器初始化
-- `[Renderer.draw]` — 渲染绘制
-- `[Parser.transform]` — 数据解析转换
-- `[Store.update]` — 状态更新
-- `[API.upload]` — 上传接口调用
-
-## 临时日志标记
-
-诊断期间添加的日志统一使用 `[DEBUG]` 前缀，方便完成后一次性搜索清理：
+Regardless of language, follow a consistent format:
 
 ```
-[DEBUG][模块.操作] key1=value1, ...
+Good log: structured, tagged, contains key data needed for decisions
+  Format: [Module.operation] key1=value1, key2=value2, ...
+
+Bad log: no context, ambiguous values
 ```
 
-诊断完成后，搜索 `[DEBUG]` 即可定位所有临时日志并移除。
+### Log Levels
 
-## 清理
+| Level | Purpose | Common Names |
+|-------|---------|-------------|
+| Debug / Trace | Normal flow tracing | `debug` / `trace` / `log` |
+| Warning | Abnormal but recoverable | `warn` / `warning` |
+| Error | Errors and exceptions | `error` / `fatal` |
 
-诊断完成并验证通过后，移除所有诊断期间添加的日志语句，保持代码干净。
+### Tag Convention
+
+Use `[Module.operation]` format to mark log source:
+
+- `[Player.init]` — player initialization
+- `[Renderer.draw]` — render draw call
+- `[Parser.transform]` — data parse / transform
+- `[Store.update]` — state update
+- `[API.upload]` — upload API call
+
+## Temporary Log Marking
+
+During diagnosis, mark all temporary logs with a `[DEBUG]` prefix for easy batch cleanup later:
+
+```
+[DEBUG][Module.operation] key1=value1, ...
+```
+
+After diagnosis, search for `[DEBUG]` to locate and remove all temporary logs at once.
+
+## Cleanup
+
+After diagnosis is complete and the fix is verified, remove all log statements added during the session. Keep the code clean.
