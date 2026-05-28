@@ -89,6 +89,19 @@ After verification passes, ask the user:
 - **User chooses cleanup**: remove all debug log statements added during this session, keeping the code clean
 - **User chooses keep**: end the workflow
 
+### Step 8: Notify Completion
+
+After the workflow ends (cleanup done or user chose to keep logs), send a desktop notification to alert the user:
+
+Invoke the notification skill:
+
+```
+Skill: dev-tools:notify
+Args: Debugger — <brief summary of what was done, e.g. "fixed null pointer in login flow", "analysis complete, 2 root causes found">
+```
+
+The summary should briefly describe the outcome — root cause found, fix applied, or issue recorded.
+
 ## Key Rules
 
 1. **Ask before guessing**: never speculate without logs — ask for logs first
