@@ -1,0 +1,11 @@
+{
+  "name": "dev-tools",
+  "version": "0.1.0",
+  "description": "开发提效工具集 — 覆盖 Debug 诊断、代码审查辅助、日志分析等开发场景",
+  "author": {
+    "name": "Hansel"
+  },
+  "license": "MIT",
+  "keywords": ["debug", "diagnostic", "logging", "troubleshooting", "dev-tools"],
+  "skills": ["./skills/"]
+}

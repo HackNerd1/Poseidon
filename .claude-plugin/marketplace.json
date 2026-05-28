@@ -14,6 +14,14 @@
       "version": "0.1.0",
       "category": "education",
       "tags": ["ruankao", "软考", "论文", "系统分析师", "备考"]
+    },
+    {
+      "name": "dev-tools",
+      "source": "./plugins/dev-tools",
+      "description": "开发提效工具集 — Debug 诊断、日志分析、代码审查辅助",
+      "version": "0.1.0",
+      "category": "development",
+      "tags": ["debug", "diagnostic", "logging", "troubleshooting", "dev-tools"]
     }
   ]
 }
