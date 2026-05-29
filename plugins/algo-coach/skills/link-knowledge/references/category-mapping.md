@@ -60,9 +60,33 @@
 
 ## 查找策略
 
-1. **精确搜索**：用题目标题关键词搜索 `site:hello-algo.com <关键词>`，通常能直接命中对应知识页
-2. **备选搜索**：GitHub 搜索 `site:github.com/krahets/hello-algo <关键词>`
-3. **近似匹配**：如果精确页未命中，自行判断题目属于哪个算法类别，在对应章节下找最接近的子页面（依据解题策略相似度、数据结构重合度、问题模式）
+> **优先级原则**：GitHub 仓库优先于站点搜索。hello-algo.com 有严格限流（429 Too Many Requests），直接抓取极易被拒绝。GitHub 上的源码（Markdown 文件）内容与网站一致，且无速率限制。
+
+### 第一优先级：GitHub 仓库搜索
+
+```
+site:github.com/krahets/hello-algo <题目关键词>
+```
+
+hello-algo 的 GitHub 仓库包含所有章节的 Markdown 源文件，路径规律：
+- 章节首页：`chapter_<name>/index.md`
+- 子章节：`chapter_<name>/<section>.md`
+
+搜索到目标 `.md` 文件后，读取其原始内容（raw URL: `https://raw.githubusercontent.com/krahets/hello-algo/main/<path>`），从中提取算法思想、解题步骤、复杂度分析。
+
+### 第二优先级：hello-algo.com 站点搜索
+
+仅当 GitHub 搜索未命中时使用（例如某些新章节尚未合并到 main 分支）：
+
+```
+site:hello-algo.com <题目关键词>
+```
+
+**限流注意**：hello-algo.com 对频繁请求返回 429。命中后使用 WebFetch 读取页面时，控制请求频率，两次请求间隔至少 2 秒。
+
+### 第三优先级：近似匹配
+
+如果精确页未命中，自行判断题目属于哪个算法类别，在对应章节下找最接近的子页面（依据解题策略相似度、数据结构重合度、问题模式）。
 
 ## 近似匹配指南
 
