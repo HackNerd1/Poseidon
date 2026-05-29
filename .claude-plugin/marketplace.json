@@ -1,5 +1,5 @@
 {
-  "name": "poseidon-marketplace",
+  "name": "poseidon",
   "owner": {
     "name": "HackNerd1"
   },
@@ -14,6 +14,14 @@
       "version": "0.1.0",
       "category": "education",
       "tags": ["ruankao", "软考", "论文", "系统分析师", "备考"]
+    },
+    {
+      "name": "algo-coach",
+      "source": "./plugins/algo-coach",
+      "description": "算法学习助手 — 将 LeetCode 刷题文件关联到 hello-algo.com 知识点，自动添加解题思路与学习笔记",
+      "version": "0.1.0",
+      "category": "education",
+      "tags": ["algorithm", "leetcode", "hello-algo", "learning", "coaching"]
     },
     {
       "name": "dev-tools",
