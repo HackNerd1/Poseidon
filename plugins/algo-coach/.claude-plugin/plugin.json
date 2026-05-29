@@ -1,7 +1,7 @@
 {
   "name": "algo-coach",
   "version": "0.1.0",
-  "description": "算法学习助手 — 将 LeetCode 刷题文件关联到 hello-algo.com 知识点，自动添加解题思路与学习笔记",
+  "description": "算法学习助手 — 关联 hello-algo.com 知识点、添加解题思路、优化算法解法",
   "author": {
     "name": "Hansel"
   },
