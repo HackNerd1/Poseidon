@@ -13,58 +13,14 @@
 
 ## 安装
 
-### 方式一：从 GitHub 安装（推荐）
-
 ```bash
-# 先添加 Poseidon 大仓为插件市场
-/plugin marketplace add <your-github-user>/Poseidon
+# 通过 Marketplace（推荐）
+/plugin marketplace add poseidon https://github.com/HackNerd1/Poseidon
+/plugin install ruankao@poseidon
 
-# 然后安装 ruankao 插件
-/plugin install ruankao@poseidon-marketplace
-```
-
-### 方式二：直接 GitHub 仓库安装
-
-如果 ruankao 作为独立仓库发布：
-
-```bash
-/plugin install https://github.com/HackNerd1/ruankao
-```
-
-### 方式三：本地路径安装
-
-```bash
-# 开发/测试 — 直接加载插件目录
-claude --plugin-dir /path/to/Poseidon/plugins/ruankao
-
-# 或在 Claude Code 会话中安装
+# 或本地路径安装
 /plugin install ./plugins/ruankao
 ```
-
-### 方式四：手动安装技能
-
-```bash
-# 项目级（仅当前项目可用）
-cp -r plugins/ruankao/skills/* .claude/skills/
-
-# 全局（所有项目可用）
-cp -r plugins/ruankao/skills/* ~/.claude/skills/
-```
-
-### 团队自动安装
-
-在目标项目的 `.claude/settings.json` 中声明：
-
-```json
-{
-  "plugins": {
-    "marketplaces": ["<your-github-user>/Poseidon"],
-    "install": ["ruankao"]
-  }
-}
-```
-
-团队成员 trust 项目后自动安装，无需手动操作。
 
 ## 目录结构
 
@@ -89,34 +45,3 @@ ruankao/
 └── README.md
 ```
 
-## 工作流协作
-
-```
-write-paper          enhance-paper       teleprompter        tts
-(从零写作)           (优化打磨)          (背诵辅助)          (音频生成)
-    │                    │                   │                  │
-    ▼                    ▼                   ▼                  ▼
- 生成初稿 ──────────→ 诊断优化 ──────────→ 统一记忆线 ──────→ 生成 mp3
-    │                    │                   │                  │
-    └─ count_chars ──────┴─ count_chars ─────┘                  │
-                                                                 │
-                                          extract_body ──────────┘
-                                          tts_edge / tts_tencent
-```
-
-## 典型使用场景
-
-1. **新题目练习**：用 `write-paper` 根据真题题干生成完整论文初稿
-2. **精细打磨**：用 `enhance-paper` 诊断、修改、校验字数
-3. **考前背诵**：用 `teleprompter` 统一记忆线格式，用 `tts` 生成音频通勤听
-4. **全流程**：`write-paper` → `enhance-paper` → `teleprompter` → `tts`
-
-## 验证
-
-```bash
-# 验证插件清单
-claude plugin validate plugins/ruankao/.claude-plugin/plugin.json
-
-# 本地加载测试
-claude --plugin-dir plugins/ruankao
-```

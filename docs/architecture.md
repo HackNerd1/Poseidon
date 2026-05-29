@@ -191,13 +191,19 @@ Poseidon/
 4. **确定性计算外置**：字数统计、正文提取等纯计算逻辑用 Python 脚本；推理决策保留在 SKILL.md 工作流中
 5. **L3 按需加载**：reference 文档在 SKILL.md 工作流中按步骤显式引用，不预加载
 
-### 3.3 插件 → 项目技能的安装
+### 3.3 插件安装
 
-每个 skill 是自包含的，可直接整体安装：
+通过 Claude Code 标准插件机制安装：
 
 ```bash
-# 将 ruankao 插件下的所有 skill 安装到目标项目
-cp -r plugins/ruankao/skills/* .claude/skills/
+# 注册 Marketplace（首次）
+/plugin marketplace add poseidon https://github.com/HackNerd1/Poseidon
+
+# 安装插件
+/plugin install ruankao@poseidon
+
+# 或本地路径安装
+/plugin install ./plugins/ruankao
 ```
 
 ---
