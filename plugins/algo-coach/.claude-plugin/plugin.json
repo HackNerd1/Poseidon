@@ -1,0 +1,11 @@
+{
+  "name": "algo-coach",
+  "version": "0.1.0",
+  "description": "算法学习助手 — 将 LeetCode 刷题文件关联到 hello-algo.com 知识点，自动添加解题思路与学习笔记",
+  "author": {
+    "name": "Hansel"
+  },
+  "license": "MIT",
+  "keywords": ["algorithm", "leetcode", "hello-algo", "learning", "coaching"],
+  "skills": ["./skills/"]
+}
