@@ -8,6 +8,7 @@
 |------|------|
 | `link-knowledge` | 为算法题文件关联 hello-algo 知识点并添加解题思路注释 |
 | `optimize-solution` | 分析算法解法的可优化点，生成优化版函数并标注改进原因 |
+| `init-problem` | 根据 LeetCode 链接初始化算法题文件，自动归入题型目录 |
 
 ## 安装
 
