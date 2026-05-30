@@ -9,10 +9,19 @@
   font-family: var(--font);
 }
 
-body {
+@page {
+  margin: 0;
+}
+
+html {
   background: linear-gradient(160deg, #fef9c3 0%, #fce7f3 30%, #e0f2fe 60%, #dcfce7 100%);
   color: #1e1b4b;
-  padding: 2.5em;
+  padding: 1.8em;
+  height: 100%;
+}
+
+body {
+  background: transparent;
 }
 
 h1 {
@@ -30,16 +39,16 @@ h2 {
   color: #fff;
   background: linear-gradient(90deg, #f43f5e, #ec4899);
   display: inline-block;
-  padding: 0.3em 0.8em;
+  padding: 0.3em 0.3em;
   border-radius: 8px;
-  margin-top: 1.4em;
+  margin-top: 0.3em;
 }
 
 h3 {
   font-weight: 700;
   color: #6366f1;
   font-size: 1.1em;
-  margin-top: 1.2em;
+  margin-top: 0.3em;
 }
 
 a {
