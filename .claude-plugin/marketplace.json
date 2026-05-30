@@ -34,10 +34,10 @@
     {
       "name": "resume",
       "source": "./plugins/resume",
-      "description": "简历相关技能集合 — 从 Git 仓库提取项目经验、生成符合 STAR 法则的简历文档",
+      "description": "简历相关技能集合 — 从 Git 仓库提取项目经验、交互式创建符合简历规范的完整简历（含 JD 匹配优化，支持所有岗位）",
       "version": "0.1.0",
       "category": "career",
-      "tags": ["resume", "简历", "STAR", "面试", "项目经验"]
+      "tags": ["resume", "简历", "STAR", "SARL", "面试", "项目经验", "JD匹配", "ATS优化"]
     }
   ]
 }
