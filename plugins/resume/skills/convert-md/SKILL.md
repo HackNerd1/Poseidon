@@ -75,23 +75,23 @@ ls *.md
 
 对应的 Resumx 输出参数：
 
-| 格式 | Resumx 默认行为 |
-|------|----------------|
-| PDF  | 默认输出格式 |
-| HTML | `--html` |
-| DOCX | `--docx` |
-| PNG  | `--png`  |
+| 格式 | 参数 |
+|------|------|
+| PDF  | 默认输出格式（也支持 `--format pdf`） |
+| HTML | `--format html` |
+| DOCX | `--format docx` |
+| PNG  | `--format png` |
 
-用户可以多选，Resumx 一次命令可同时输出多种格式。
+用户可以多选，Resumx 一次命令可同时输出多种格式（逗号分隔：`--format pdf,html` 或重复传参：`-f html -f png`）。
 
 ### 第四步：选择风格
 
 #### 4.1 获取可用风格列表
 
-优先尝试动态获取 Resumx 当前支持的风格：
+优先尝试获取 Resumx 当前支持的风格：
 
 ```bash
-npx @resumx/resumx styles --list 2>/dev/null || npx @resumx/resumx --help 2>/dev/null | grep -i style
+npx @resumx/resumx --help
 ```
 
 如果动态获取失败，向用户展示以下精选风格分类供选择：
@@ -121,7 +121,7 @@ npx @resumx/resumx styles --list 2>/dev/null || npx @resumx/resumx --help 2>/dev
 - `terminal` — 终端/黑客风格，适合极客岗位
 - `newspaper` — 报刊栏式，适合文字密集型内容
 
-> **注意**：上述风格名称为常见分类参考。实际可用风格以 `resumx styles --list` 输出为准。Resumx 内置 30+ 风格，每个风格名对应一套完整的排版方案（字体、字号、间距、配色）。
+> **注意**：上述风格名称为常见分类参考。实际可用风格以 `resumx --help` 输出为准。Resumx 内置 30+ 风格，各风格的适用性需在转换后通过预览确认。
 
 #### 4.2 用户选择流程
 
@@ -133,6 +133,7 @@ npx @resumx/resumx styles --list 2>/dev/null || npx @resumx/resumx --help 2>/dev
   • classic   — 经典排版，适合传统行业
   • minimal   — 极简风格，信息密度高
   • compact   — 紧凑布局，内容多时推荐
+  • vibrant   — 内置渐变色风格，彩色渐变背景 + 渐变标题（--css styles/vibrant.css）
 
 如需查看更多风格，输入 "list" 查看完整列表。
 输入风格名称即可，不选择将使用默认的 modern 风格。
@@ -159,29 +160,35 @@ npx @resumx/resumx styles --list 2>/dev/null || npx @resumx/resumx --help 2>/dev
 
 ```bash
 # 基础用法（输出 PDF）
-npx @resumx/resumx <输入文件> --style <风格名>
+npx @resumx/resumx <输入文件> -s <风格名>
 
-# 多格式输出（Resumx 通常一次支持多格式）
-npx @resumx/resumx <输入文件> --style <风格名> --html --docx --png
+# 多格式输出
+npx @resumx/resumx <输入文件> -s <风格名> -f html -f png
+# 或逗号分隔
+npx @resumx/resumx <输入文件> -s <风格名> --format pdf,html
 ```
 
-根据用户选择的格式组合，添加对应的 CLI flag。
+根据用户选择的格式组合，通过 `-f` / `--format` 传递。
 
 #### Resumx 常用 CLI 参考
 
 ```bash
 # 基础渲染
 resumx resume.md                          # 默认输出 PDF
-resumx resume.md --style modern           # 指定风格
-resumx resume.md --watch                  # 实时预览模式
+resumx resume.md -s modern                # 指定风格
+resumx resume.md -w                       # 实时预览模式
 
 # 多格式输出
-resumx resume.md --html                   # 额外输出 HTML
-resumx resume.md --docx                   # 额外输出 DOCX
-resumx resume.md --png                    # 额外输出 PNG
+resumx resume.md -f html                  # 额外输出 HTML
+resumx resume.md -f docx                  # 额外输出 DOCX
+resumx resume.md -f png                   # 额外输出 PNG
+resumx resume.md -f pdf,html,docx         # 一次输出多种格式
 
 # 输出路径
-resumx resume.md --output ./out/resume    # 指定输出路径（不含扩展名）
+resumx resume.md -o ./out/resume          # 指定输出路径（不含扩展名）
+
+# 使用自定义 CSS（内置 vibrant 风格）
+resumx resume.md --css styles/vibrant.css
 ```
 
 > 实际 CLI 接口以安装的 Resumx 版本为准。转换前先用 `npx @resumx/resumx --help` 确认当前版本的参数格式。
@@ -215,18 +222,20 @@ resumx resume.md --output ./out/resume    # 指定输出路径（不含扩展名
 ## 关键规则
 
 1. **先查后装**：每次运行先检查 Resumx 是否已安装，避免重复安装
-2. **动态发现风格**：优先用 `resumx styles --list` 获取真实风格列表，失败则用精选分类列表
+2. **动态发现风格**：优先用 `resumx --help` 确认当前版本支持的参数，风格名以实际 CLI 支持的为准
 3. **默认值合理**：格式默认 PDF，风格默认 `modern`
 4. **确认再执行**：汇总选项后必须经用户确认才运行转换命令
 5. **不做内容修改**：仅负责格式转换，不修改 Markdown 内容。如发现内容问题（如待补充标记），提示用户但继续转换
 6. **保留源文件**：转换不会修改原始 `.md` 文件
 7. **语言跟随用户**：用户用中文提问就用中文回复
+8. **技能换行规则**：Markdown 中单行换行不会产生实际断行。专业技能区每组写成独立一行时，行尾必须加两个空格（`  `）才能渲染为换行，否则所有分组会连成一段。转换前应检查输入文件是否遵循此规则，必要时自动修正
+9. **内置风格**：本技能 `styles/` 目录下提供自维护的 CSS 样式，可通过 `--css` 参数使用（`--css <本目录>/styles/<名称>.css`），无需依赖 Resumx 内置风格
 
 ## 边界情况
 
 - **Node.js 未安装**：引导用户安装 Node.js ≥ 18，提供下载链接，暂停流程
 - **Markdown 文件不存在**：提示用户文件不存在，列出当前目录 `.md` 文件供选择
-- **风格名无效**：Resumx 可能回退到默认风格，告知用户并建议用 `resumx styles --list` 查看有效列表
+- **风格名无效**：Resumx 可能回退到默认风格，告知用户并建议用 `resumx --help` 查看有效参数
 - **Markdown 包含中文**：Resumx 基于 Playwright，中文渲染依赖系统字体。如出现中文乱码，建议用户安装中文字体或使用已配置中文字体的风格
 - **输出文件已存在**：Resumx 默认覆盖，确认前提示用户
 - **转换失败**：检查错误信息，常见原因：Markdown 语法错误、风格不支持当前 Resumx 版本、Node.js 版本过低。针对性给出修复建议

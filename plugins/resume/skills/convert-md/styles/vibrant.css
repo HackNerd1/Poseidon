@@ -1,0 +1,74 @@
+/* Vibrant style for Resumx */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+:root {
+  --font: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+* {
+  font-family: var(--font);
+}
+
+body {
+  background: linear-gradient(160deg, #fef9c3 0%, #fce7f3 30%, #e0f2fe 60%, #dcfce7 100%);
+  color: #1e1b4b;
+  padding: 2.5em;
+}
+
+h1 {
+  font-size: 2.8em;
+  font-weight: 800;
+  background: linear-gradient(90deg, #f43f5e, #d946ef, #6366f1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.3em;
+}
+
+h2 {
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(90deg, #f43f5e, #ec4899);
+  display: inline-block;
+  padding: 0.3em 0.8em;
+  border-radius: 8px;
+  margin-top: 1.4em;
+}
+
+h3 {
+  font-weight: 700;
+  color: #6366f1;
+  font-size: 1.1em;
+  margin-top: 1.2em;
+}
+
+a {
+  color: #6366f1;
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 2px solid #c4b5fd;
+}
+
+a:hover {
+  border-bottom-color: #6366f1;
+}
+
+hr {
+  border: none;
+  height: 4px;
+  background: linear-gradient(90deg, #f43f5e, #d946ef, #6366f1, #0ea5e9, #10b981);
+  border-radius: 2px;
+  margin: 0.5em 0;
+}
+
+strong {
+  color: #d946ef;
+}
+
+ul > li::marker {
+  color: #f43f5e;
+}
+
+p {
+  line-height: 1.9;
+}
