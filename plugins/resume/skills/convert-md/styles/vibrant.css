@@ -14,14 +14,30 @@
 }
 
 html {
-  background: linear-gradient(160deg, #fef9c3 0%, #fce7f3 30%, #e0f2fe 60%, #dcfce7 100%);
   color: #1e1b4b;
-  padding: 1.8em;
-  height: 100%;
 }
 
-body {
-  background: transparent;
+/* PDF — use @page margins instead of html padding to avoid triggering extra page */
+@media print {
+  html {
+    padding: 0;
+  }
+  body {
+    margin: 1.2em 1.8em;
+    background: linear-gradient(160deg, #fef9c3 0%, #fce7f3 30%, #e0f2fe 60%, #dcfce7 100%);
+  }
+}
+
+/* PNG */
+@media screen {
+  html {
+    padding: 0em;
+    height: fit-content;
+    background: linear-gradient(160deg, #fef9c3 0%, #fce7f3 30%, #e0f2fe 60%, #dcfce7 100%);
+  }
+  body {
+    background: transparent;
+  }
 }
 
 h1 {
