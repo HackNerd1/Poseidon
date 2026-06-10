@@ -57,7 +57,7 @@ cd Poseidon
 | 技能 | 说明 |
 |------|------|
 | `code-review` | 代码审查 — 检查暂存/未暂存变更、架构对齐、最佳实践建议 |
-| `debugger` | 诊断调试 — 日志分析、白屏/渲染异常、数据不匹配等运行时问题排查 |
+| `debug` | 诊断调试 — 日志分析、白屏/渲染异常、数据不匹配等运行时问题排查 |
 
 ### dev-tools Hooks
 
@@ -80,6 +80,7 @@ cd Poseidon
 | 技能 | 说明 |
 |------|------|
 | `extract-project` | 从 Git 仓库提取项目经验，生成符合 STAR/SARL 法则的简历文档 |
+| `extract-knowledge` | 从 Git 仓库挖掘核心业务场景、技术难点和关键设计，按业务/技术/设计三维度输出结构化知识文档 |
 | `create-resume` | 交互式创建完整简历，支持 JSON 导入和 JD 关键词匹配 |
 | `convert-md` | 使用 Resumx 将 Markdown 简历转换为 PDF、HTML、DOCX、PNG 等格式 |
 | `prep-interview` | 从简历提取技术栈与项目经验，生成结构化面试准备目录 |
@@ -88,10 +89,10 @@ cd Poseidon
 
 | 技能 | 说明 |
 |------|------|
-| `write-paper` | 论文写作 |
-| `enhance-paper` | 论文优化 |
-| `teleprompter` | 帮记词生成 |
-| `tts` | TTS 音频合成 |
+| `write-paper` | 从零写作完整论文：解析题干 → 逐段生成（摘要/背景/技术方法说明/论点展开/结尾）→ 帮记词 → 字数校验 |
+| `enhance-paper` | 论文诊断与优化：结构完整性检查、字数合规、段落重写/扩展/压缩、PRD 一致性校验、笔误修正 |
+| `teleprompter` | 为论文段落生成标准格式背诵提示（记忆线），统一为 `> 记忆线：... -> ...` 格式 |
+| `tts` | Markdown 论文转音频：自动过滤标题和引用行，调用 edge-tts 免费合成 mp3（微软神经语音） |
 
 ## 架构
 
