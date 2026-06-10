@@ -13,7 +13,10 @@
 
 | Hook | 事件 | 说明 |
 |------|------|------|
-| `Stop` | Claude 响应完成 | 自动发送桌面通知（跨平台，支持 Windows/macOS/Linux） |
+| `Stop` | Claude 响应完成 | 自动发送桌面通知 |
+| `PostToolUse` → `AskUserQuestion` | Claude 向用户提问 | 弹出通知提醒用户需要回复 |
+
+> 通知支持点击后回到 Claude Code 窗口（Windows 原生支持，macOS 需安装 `terminal-notifier`，Linux 通过 `notify-send --action` 实现）。
 
 配置位置：`hooks/hooks.json`，安装插件后自动生效。
 

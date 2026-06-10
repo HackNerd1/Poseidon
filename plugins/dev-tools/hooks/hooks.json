@@ -11,6 +11,19 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/notify.py\" \"Claude Code\" \"Waiting for your input — Claude is asking a question\"",
+            "timeout": 30,
+            "async": true
+          }
+        ]
+      }
     ]
   }
 }
