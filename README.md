@@ -61,10 +61,12 @@ cd Poseidon
 
 ### dev-tools Hooks
 
-| Hook | 事件 | 说明 |
-|------|------|------|
-| `Stop` | Claude 响应完成 | 自动发送桌面通知 |
-| `PostToolUse` → `AskUserQuestion` | Claude 向用户提问 | 弹出通知提醒用户需要回复 |
+| 事件 | 说明 |
+|------|------|
+| `Stop` | Claude 响应完成 → 桌面通知 |
+| `PreToolUse` → `AskUserQuestion` | Claude 向用户提问 → 即时弹出通知 |
+| `Notification` → `permission_prompt` | Claude 需要工具权限审批 → 即时弹出通知 |
+| `Notification` → `idle_prompt` | Claude 空闲等待输入（~60s 延迟）→ 桌面通知 |
 
 通知支持点击后回到 Claude Code 窗口。配置位置：`plugins/dev-tools/hooks/hooks.json`，安装插件后自动生效。
 
@@ -98,3 +100,10 @@ cd Poseidon
 ## 架构
 
 详见 [docs/architecture.md](./docs/architecture.md)。
+
+## TODO
+
+- [ ] 薪资计算
+- [ ] 非研发简历
+- [ ] 各种格式互转
+- [ ] 更新说明文档

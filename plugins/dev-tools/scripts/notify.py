@@ -3,25 +3,23 @@
 Usage:
     python notify.py <title> <message>
     python notify.py --title "Task Done" --message "Debugger completed."
-    python notify.py --title "Claude Code" --message "Waiting for input"
+    python notify.py --title "Claude Code" --message "Waiting for input" --no-wait
 
 Click behavior:
-    Windows  — clicking the toast brings the terminal window back to foreground.
-    macOS    — uses terminal-notifier (if installed) with -activate flag; falls back to osascript.
-    Linux    — notify-send with --action supports click-to-focus.
+    Windows  — NotifyIcon balloon tip; clicking brings the terminal window to foreground.
+    macOS    — terminal-notifier (if installed, with -activate) or osascript fallback.
+    Linux    — notify-send with --action for click-to-focus.
 
-On Windows, the script captures the current foreground window and spawns a
-short-lived background listener (~30s) to handle toast activation clicks.
+With --no-wait, the script fires a balloon and exits after ~9s without
+listening for clicks. Use this in automated/hook contexts.
 """
 
 import subprocess
 import sys
+import os
 import platform
 import argparse
-import base64
-import os
 import tempfile
-import time
 
 
 # ── platform detection ──────────────────────────────────────────────
@@ -30,7 +28,7 @@ SYSTEM = platform.system()
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Windows — PowerShell + WinRT toast with click-to-focus
+# Windows — NotifyIcon balloon tip with click-to-focus
 # ═══════════════════════════════════════════════════════════════════════
 
 def _get_foreground_window_ps() -> str:
@@ -46,6 +44,10 @@ public class Win32 {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int dwProcessId);
+    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 }
 '@
 $hwnd = [Win32]::GetForegroundWindow()
@@ -58,104 +60,150 @@ Write-Output "$hwnd|$title|$pid"
 """
 
 
-def _notify_windows(title: str, message: str) -> bool:
-    """Send a Windows toast notification. Spawns a listener that catches
-    clicks and brings the foreground window back into focus."""
-    title_b64 = base64.b64encode(title.encode("utf-16-le")).decode("ascii")
-    msg_b64 = base64.b64encode(message.encode("utf-16-le")).decode("ascii")
+def _notify_windows(title: str, message: str, no_wait: bool = False) -> bool:
+    """Send a Windows toast notification.
 
+    When no_wait is False, spawns a listener that catches clicks and brings
+    the foreground window back into focus. When True, fires the toast and
+    returns immediately — suitable for automated/hook contexts."""
+    if no_wait:
+        title_escaped = title.replace('"', '`"').replace('$', '`$')
+        msg_escaped = message.replace('"', '`"').replace('$', '`$')
+        ps_script = f'''
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$icon = [System.Drawing.SystemIcons]::Information
+$balloon = New-Object System.Windows.Forms.NotifyIcon
+$balloon.Icon = $icon
+$balloon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
+$balloon.BalloonTipTitle = "{title_escaped}"
+$balloon.BalloonTipText = "{msg_escaped}"
+$balloon.Visible = $true
+$balloon.ShowBalloonTip(8000)
+Start-Sleep -Seconds 9
+$balloon.Dispose()
+Write-Output "[notify] Balloon tip shown"
+'''
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=12,
+        )
+        if result.returncode != 0 and result.stderr:
+            print(f"[notify:windows] {result.stderr.strip()}", file=sys.stderr)
+        if result.stdout:
+            print(result.stdout.strip())
+        return result.returncode == 0
+
+    title_escaped = title.replace('"', "'")
+    msg_escaped = message.replace('"', "'")
     ps_script = rf'''
 {_get_foreground_window_ps()}
 
-$fgInfo = "$hwnd|$title|$pid"
 $fgHwnd = $hwnd
 $fgTitle = $title
 
-# Store window info so external helpers can read it
-$infoFile = Join-Path $env:TEMP "claude_code_focus.txt"
-$fgInfo | Out-File -FilePath $infoFile -Encoding utf8
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
-# Build toast XML
-$titleB64 = "{title_b64}"
-$msgB64 = "{msg_b64}"
-$titleDecoded = [System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String($titleB64))
-$msgDecoded = [System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String($msgB64))
+# Hidden form required for NotifyIcon event dispatching
+$form = New-Object System.Windows.Forms.Form
+$form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
+$form.ShowInTaskbar = $false
+$form.TopMost = $false
 
-$xml = @"
-<toast scenario="reminder" activationType="foreground">
-  <visual>
-    <binding template="ToastText02">
-      <text id="1">$titleDecoded</text>
-      <text id="2">$msgDecoded</text>
-    </binding>
-  </visual>
-  <actions>
-    <action content="Focus Claude Code" arguments="focus" activationType="foreground"/>
-  </actions>
-</toast>
-"@
+$balloon = New-Object System.Windows.Forms.NotifyIcon
+$balloon.Icon = [System.Drawing.SystemIcons]::Information
+$balloon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
+$balloon.BalloonTipTitle = '<<<TITLE>>>'
+$balloon.BalloonTipText = '<<<MESSAGE>>>'
 
-$xmlDoc = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xmlDoc.LoadXml($xml)
-
-$toast = [Windows.UI.Notifications.ToastNotification]::new($xmlDoc)
-$notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Claude Code")
-
-# Register for the Activated event (fires when user clicks the toast or action button)
-$eventId = "ToastActivated_" + (Get-Random)
-Register-ObjectEvent -InputObject $toast -EventName Activated -SourceIdentifier $eventId | Out-Null
-Register-ObjectEvent -InputObject $toast -EventName Dismissed -SourceIdentifier ($eventId + "_Dismissed") | Out-Null
-
-$notifier.Show($toast)
-
-# Wait up to 30s for a click, then clean up
-$timeout = 30
 $clicked = $false
-$sw = [System.Diagnostics.Stopwatch]::StartNew()
-while ($sw.Elapsed.TotalSeconds -lt $timeout) {{
-    $evt = Wait-Event -Timeout 1000
-    if ($evt) {{
-        if ($evt.SourceIdentifier -eq $eventId) {{
-            $clicked = $true
-            # Bring the original window back to foreground
-            try {{
-                if ($fgHwnd -ne [IntPtr]::Zero) {{
-                    if ([Win32]::IsIconic($fgHwnd)) {{
-                        [Win32]::ShowWindow($fgHwnd, 9)  # SW_RESTORE
-                    }}
-                    [Win32]::SetForegroundWindow($fgHwnd)
-                }}
-            }} catch {{ }}
-            Remove-Event -EventIdentifier $evt.EventIdentifier
-            break
-        }}
-        if ($evt.SourceIdentifier -eq ($eventId + "_Dismissed")) {{
-            Remove-Event -EventIdentifier $evt.EventIdentifier
-            break
-        }}
-        Remove-Event -EventIdentifier $evt.EventIdentifier
-    }}
-}}
-$sw.Stop()
+$balloon.add_BalloonTipClicked({{
+    $script:clicked = $true
 
-# Cleanup
-Unregister-Event -SourceIdentifier $eventId -ErrorAction SilentlyContinue
-Unregister-Event -SourceIdentifier ($eventId + "_Dismissed") -ErrorAction SilentlyContinue
-Remove-Item $infoFile -ErrorAction SilentlyContinue
+    # AllowSetForegroundWindow authorises us to set foreground because we
+    # just received a user input event (the click on the balloon).
+    [Win32]::AllowSetForegroundWindow(-1) | Out-Null
+
+    if ($fgHwnd -ne [IntPtr]::Zero) {{
+        $foreHwnd = [Win32]::GetForegroundWindow()
+        $foreThr = [Win32]::GetWindowThreadProcessId($foreHwnd, [IntPtr]::Zero)
+        $curThr = [Win32]::GetCurrentThreadId()
+        if ($foreThr -ne $curThr) {{
+            [Win32]::AttachThreadInput($curThr, $foreThr, $true) | Out-Null
+        }}
+
+        if ([Win32]::IsIconic($fgHwnd)) {{
+            [Win32]::ShowWindow($fgHwnd, 9)  # SW_RESTORE
+        }}
+
+        # HWND_TOPMOST -> HWND_NOTOPMOST trick raises z-order
+        $HWND_TOPMOST = [IntPtr](-1); $HWND_NOTOPMOST = [IntPtr](-2)
+        $SWP_NOSIZE = 0x0001; $SWP_NOMOVE = 0x0002
+        [Win32]::SetWindowPos($fgHwnd, $HWND_TOPMOST, 0, 0, 0, 0, $SWP_NOSIZE -bor $SWP_NOMOVE) | Out-Null
+        [Win32]::SetWindowPos($fgHwnd, $HWND_NOTOPMOST, 0, 0, 0, 0, $SWP_NOSIZE -bor $SWP_NOMOVE) | Out-Null
+        [Win32]::SetForegroundWindow($fgHwnd) | Out-Null
+
+        if ($foreThr -ne $curThr) {{
+            [Win32]::AttachThreadInput($curThr, $foreThr, $false) | Out-Null
+        }}
+    }}
+
+    $balloon.Dispose()
+    $form.Close()
+}})
+$balloon.Visible = $true
+$balloon.ShowBalloonTip(30000)
+
+# 30s timeout timer
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 30000
+$timer.Add_Tick({{
+    $timer.Stop()
+    $balloon.Dispose()
+    $form.Close()
+}})
+$timer.Start()
+
+# Run the WinForms message loop - required for NotifyIcon events to fire
+[System.Windows.Forms.Application]::Run($form)
 
 if ($clicked) {{
-    Write-Output "[notify] Toast clicked — focused window '$fgTitle'"
+    Write-Output "[notify] Balloon clicked - focused window '$fgTitle'"
 }} else {{
-    Write-Output "[notify] Toast shown (no click)"
+    Write-Output "[notify] Balloon shown (no click)"
 }}
 '''
 
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", ps_script],
-        capture_output=True,
-        text=True,
-        timeout=35,  # slightly longer than the 30s internal wait
-    )
+    # Replace placeholders with actual content
+    ps_script = ps_script.replace('<<<TITLE>>>', title_escaped)
+    ps_script = ps_script.replace('<<<MESSAGE>>>', msg_escaped)
+
+    # Write to temp file to avoid -Command escaping issues
+    fd, tmp_path = tempfile.mkstemp(suffix='.ps1', prefix='claude_notify_')
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.write(ps_script)
+
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tmp_path],
+            capture_output=True,
+            text=True,
+            timeout=35,
+        )
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+    if result.returncode != 0 and result.stderr:
+        print(f"[notify:windows] {result.stderr.strip()}", file=sys.stderr)
+    if result.stdout:
+        print(result.stdout.strip())
+    return result.returncode == 0
     if result.returncode != 0 and result.stderr:
         print(f"[notify:windows] {result.stderr.strip()}", file=sys.stderr)
     if result.stdout:
@@ -246,10 +294,10 @@ def _notify_linux(title: str, message: str) -> bool:
 # Public API
 # ═══════════════════════════════════════════════════════════════════════
 
-def send_notification(title: str, message: str) -> bool:
+def send_notification(title: str, message: str, no_wait: bool = False) -> bool:
     """Send a desktop notification. Returns True on success."""
     if SYSTEM == "Windows":
-        return _notify_windows(title, message)
+        return _notify_windows(title, message, no_wait=no_wait)
     elif SYSTEM == "Darwin":
         return _notify_macos(title, message)
     else:
@@ -264,13 +312,18 @@ def main():
     parser.add_argument("message", nargs="?", help="Notification body")
     parser.add_argument("--title", "-t", dest="title_opt", help="Notification title")
     parser.add_argument("--message", "-m", dest="message_opt", help="Notification body")
+    parser.add_argument(
+        "--no-wait", "-n",
+        action="store_true",
+        help="Fire toast and exit immediately (no click listener). Use in hooks/automation."
+    )
 
     args = parser.parse_args()
 
     title = args.title_opt or args.title or "Claude Code"
     message = args.message_opt or args.message or "Task completed."
 
-    success = send_notification(title, message)
+    success = send_notification(title, message, no_wait=args.no_wait)
     if not success:
         print(
             f"[notify] Failed to send notification on {SYSTEM}",
