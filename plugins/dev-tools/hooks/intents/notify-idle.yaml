@@ -1,0 +1,23 @@
+id: notify-idle
+semantic_event: idle_prompt
+handler:
+  type: command
+  script: scripts/notify.py
+  title:
+    claude: Claude Code
+  message:
+    claude: Claude is idle - waiting for your next prompt
+  no_wait:
+    claude: false
+  quiet:
+    claude: false
+  best_effort:
+    claude: false
+platforms:
+  claude:
+    event: Notification
+    matcher: idle_prompt
+    timeout: 35
+    async: true
+    root_var: CLAUDE_PLUGIN_ROOT
+    stdout_policy: inherited

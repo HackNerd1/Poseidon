@@ -1,0 +1,23 @@
+id: notify-question-required
+semantic_event: question_request
+handler:
+  type: command
+  script: scripts/notify.py
+  title:
+    claude: Claude Code
+  message:
+    claude: Claude is asking a question - input needed
+  no_wait:
+    claude: false
+  quiet:
+    claude: false
+  best_effort:
+    claude: false
+platforms:
+  claude:
+    event: PreToolUse
+    matcher: AskUserQuestion
+    timeout: 35
+    async: true
+    root_var: CLAUDE_PLUGIN_ROOT
+    stdout_policy: inherited

@@ -246,6 +246,18 @@ def validate_codex(root: Path) -> list[str]:
         source_manifest = codex.plugin_manifest_path(plugin_dir)
         if source_manifest.exists():
             errors.append(f"{source_manifest}: source Codex manifests are generated; keep metadata in {codex.PLUGIN_METADATA}")
+        for generated_hook_source in (
+            plugin_dir / "hooks" / "hooks.json",
+            plugin_dir / "hooks" / "codex",
+            plugin_dir / "hooks" / "claude",
+        ):
+            if generated_hook_source.is_file() or (
+                generated_hook_source.is_dir() and any(generated_hook_source.rglob("*"))
+            ):
+                errors.append(
+                    f"{generated_hook_source}: platform hook configs are generated; "
+                    "keep canonical hooks in hooks/intents/*.yaml"
+                )
 
     plugin_names = {plugin_dir.name for plugin_dir in plugin_dirs}
     extra_metadata = set(metadata_plugins) - plugin_names
@@ -367,6 +379,18 @@ def validate_claude_hook_intents(root: Path) -> list[str]:
         hooks = rendered_hooks.get("hooks")
         if not isinstance(hooks, dict):
             errors.append(f"{plugin_dir / 'hooks' / 'intents'}: rendered claude hooks missing hooks object")
+            continue
+
+        package_hooks = claude.package_plugin_path(root, plugin_dir.name) / "hooks" / "hooks.json"
+        if not package_hooks.exists():
+            continue
+        try:
+            actual_hooks = read_json(package_hooks)
+        except (json.JSONDecodeError, ValueError) as exc:
+            errors.append(f"Invalid Claude hooks {package_hooks}: {exc}")
+            continue
+        if not codex.json_equal(actual_hooks, rendered_hooks):
+            errors.append(f"{package_hooks}: generated hooks are not in sync with hooks/intents/*.yaml")
     return errors
 
 

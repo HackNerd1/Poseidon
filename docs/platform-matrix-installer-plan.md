@@ -259,9 +259,6 @@ plugins/dev-tools/hooks/
   intents/
     notify-response-ready.yaml
     notify-permission-required.yaml
-  hooks.json          # generated legacy Claude-compatible default, if committed
-  claude/hooks.json   # generated Claude hook output, if committed
-  codex/hooks.json    # generated Codex hook output, if committed
 ```
 
 Shared executable logic should stay in `plugins/dev-tools/scripts/`, while event
@@ -304,11 +301,10 @@ Installer behavior:
 
 - If `plugins/<plugin>/hooks/intents/*.yaml` exists, adapters render platform
   hooks from intents.
-- If no intents exist, Codex falls back to `hooks/codex/hooks.json` for backward
-  compatibility during migration.
 - Codex generated packages always receive rendered hooks at `hooks/hooks.json`.
-- Claude may receive rendered `hooks/claude/hooks.json` and `hooks/hooks.json`;
-  during migration the legacy hand-written Claude files can remain committed.
+- Claude generated packages always receive rendered hooks at `hooks/hooks.json`.
+- Source plugin directories must not maintain `hooks/hooks.json`, `hooks/claude/`,
+  or `hooks/codex/`.
 - Validation checks generated Codex hooks against intent output and still applies
   Codex-specific hook safety checks.
 
@@ -374,20 +370,14 @@ leak into Codex packages.
 - Add `plugins/dev-tools/hooks/intents/*.yaml` as canonical hook definitions.
 - Add `scripts/hook_intents.py` with a standard-library parser for the controlled
   intent YAML subset and renderers for Codex and Claude.
-- Update the Codex adapter to prefer intent-rendered hooks when intent files are
-  present, falling back to `hooks/codex/hooks.json` during migration.
-- Update validation so generated Codex package hooks must match intent output
-  when intents are present.
-- Optionally add a generation command later to refresh committed
-  `hooks/claude/hooks.json`, `hooks/codex/hooks.json`, and legacy
-  `hooks/hooks.json` from intents for easier review.
+- Update Codex and Claude adapters to render platform hooks from intents.
+- Update validation so generated platform package hooks must match intent output
+  when generated packages are present.
 
 ### Phase 7: Single-Source Hook Cleanup
 
-- Once intent generation is stable, mark hand-written platform hook JSON as
-  generated artifacts.
-- Decide whether generated hook JSON remains committed for transparency or is
-  produced only under `.codex/generated/plugins/`.
+- Remove hand-written platform hook JSON from source plugin directories.
+- Generate hook JSON only under platform generated package directories.
 - Expand intent platform mappings for Cursor/Windsurf only when those platforms
   have a hook/rule surface that can faithfully represent the semantic event.
 

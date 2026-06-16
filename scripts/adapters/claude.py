@@ -7,6 +7,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import hook_intents
+
 from adapters import codex
 
 
@@ -91,6 +93,27 @@ def generate_marketplace(repo_root: Path, plugin_dirs: list[Path] | None = None)
     }
 
 
+def hook_intent_context(plugin_dir: Path) -> dict[str, str]:
+    return {
+        "CLAUDE_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}",
+    }
+
+
+def render_claude_hooks(plugin_dir: Path) -> dict[str, Any] | None:
+    return hook_intents.render_platform_hooks(
+        plugin_dir,
+        "claude",
+        hook_intent_context(plugin_dir),
+    )
+
+
+def render_claude_hooks_template(plugin_dir: Path, target: Path) -> None:
+    hooks = render_claude_hooks(plugin_dir)
+    if hooks is None:
+        return
+    write_json(target / "hooks" / "hooks.json", hooks)
+
+
 def copy_claude_package(repo_root: Path, plugin_dir: Path) -> Path:
     target = package_plugin_path(repo_root, plugin_dir.name)
     if target.exists():
@@ -100,11 +123,16 @@ def copy_claude_package(repo_root: Path, plugin_dir: Path) -> Path:
         ignored = {".codex-plugin", ".claude-plugin", "__pycache__"}
         if Path(directory) == plugin_dir / "hooks" and "codex" in names:
             ignored.add("codex")
+        if Path(directory) == plugin_dir / "hooks" and "claude" in names:
+            ignored.add("claude")
+        if Path(directory) == plugin_dir / "hooks" and "intents" in names:
+            ignored.add("intents")
         return ignored.intersection(names)
 
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(plugin_dir, target, ignore=ignore)
     write_json(target / PLUGIN_MANIFEST, generate_plugin_manifest(plugin_dir))
+    render_claude_hooks_template(plugin_dir, target)
     return target
 
 

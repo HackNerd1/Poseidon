@@ -182,6 +182,10 @@ def copy_codex_package(repo_root: Path, plugin_dir: Path) -> Path:
                 ignored.add("hooks.json")
             if "claude" in names:
                 ignored.add("claude")
+            if "codex" in names:
+                ignored.add("codex")
+            if "intents" in names:
+                ignored.add("intents")
         return ignored.intersection(names)
 
     target.parent.mkdir(parents=True, exist_ok=True)

@@ -13,7 +13,9 @@ YamlValue = Union[dict[str, Any], list[Any], str, int, bool, None]
 INTENTS_DIR = Path("hooks") / "intents"
 SEMANTIC_EVENT_ORDER = {
     "turn_stop": 10,
-    "permission_request": 20,
+    "question_request": 20,
+    "permission_request": 30,
+    "idle_prompt": 40,
 }
 SUPPORTED_PLATFORMS = {"claude", "codex"}
 FLAG_BY_FIELD = {
