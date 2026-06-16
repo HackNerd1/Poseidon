@@ -8,29 +8,23 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import hook_intents
+
 
 PLUGIN_MANIFEST = ".codex-plugin/plugin.json"
-CLAUDE_MANIFEST = ".claude-plugin/plugin.json"
 MARKETPLACE_PATH = ".agents/plugins/marketplace.json"
-MARKETPLACE_NAME = "poseidon"
+DEFAULT_MARKETPLACE_NAME = "poseidon"
 PACKAGE_ROOT = ".codex/generated/plugins"
-
-CATEGORY_BY_PLUGIN = {
-    "algo-coach": "Education",
-    "dev-tools": "Development",
-    "resume": "Career",
-    "ruankao": "Education",
-}
+PLUGIN_METADATA = "plugins/plugin-metadata.json"
 
 
 def discover_plugin_dirs(repo_root: Path) -> list[Path]:
-    plugins_root = repo_root / "plugins"
-    if not plugins_root.exists():
-        return []
+    metadata = read_metadata(repo_root)
+    plugins = metadata["plugins"]
     return sorted(
-        path
-        for path in plugins_root.iterdir()
-        if path.is_dir() and (path / CLAUDE_MANIFEST).exists()
+        repo_root / "plugins" / name
+        for name in plugins
+        if (repo_root / "plugins" / name).is_dir()
     )
 
 
@@ -74,15 +68,77 @@ def package_source_path(plugin_name: str) -> str:
     return f"./{PACKAGE_ROOT}/{plugin_name}"
 
 
-def cache_plugin_root(plugin_name: str, version: str) -> str:
-    return f"$HOME/.codex/plugins/cache/{MARKETPLACE_NAME}/{plugin_name}/{version}"
+def metadata_path(repo_root: Path) -> Path:
+    return repo_root / PLUGIN_METADATA
 
 
-def cache_plugin_root_windows(plugin_name: str, version: str) -> str:
-    return rf"%USERPROFILE%\.codex\plugins\cache\{MARKETPLACE_NAME}\{plugin_name}\{version}"
+def read_metadata(repo_root: Path) -> dict[str, Any]:
+    metadata = read_json(metadata_path(repo_root))
+    plugins = metadata.get("plugins")
+    if not isinstance(plugins, dict):
+        raise ValueError(f"{metadata_path(repo_root)} must contain a plugins object")
+    return metadata
+
+
+def plugin_metadata(plugin_dir: Path) -> dict[str, Any]:
+    repo_root = plugin_dir.parents[1]
+    metadata = read_metadata(repo_root)
+    plugins = metadata["plugins"]
+    plugin = plugins.get(plugin_dir.name)
+    if not isinstance(plugin, dict):
+        raise ValueError(f"{metadata_path(repo_root)} missing metadata for plugin '{plugin_dir.name}'")
+    return plugin
+
+
+def marketplace_metadata(repo_root: Path) -> dict[str, Any]:
+    metadata = read_metadata(repo_root)
+    marketplace = metadata.get("marketplace")
+    if not isinstance(marketplace, dict):
+        return {
+            "name": DEFAULT_MARKETPLACE_NAME,
+            "displayName": "Poseidon",
+        }
+    return marketplace
+
+
+def marketplace_name(repo_root: Path) -> str:
+    return str(marketplace_metadata(repo_root).get("name") or DEFAULT_MARKETPLACE_NAME)
+
+
+def cache_plugin_root(plugin_name: str, version: str, repo_root: Path | None = None) -> str:
+    marketplace = marketplace_name(repo_root) if repo_root is not None else DEFAULT_MARKETPLACE_NAME
+    return f"$HOME/.codex/plugins/cache/{marketplace}/{plugin_name}/{version}"
+
+
+def cache_plugin_root_windows(plugin_name: str, version: str, repo_root: Path | None = None) -> str:
+    marketplace = marketplace_name(repo_root) if repo_root is not None else DEFAULT_MARKETPLACE_NAME
+    return rf"%USERPROFILE%\.codex\plugins\cache\{marketplace}\{plugin_name}\{version}"
+
+
+def hook_intent_context(plugin_dir: Path) -> dict[str, str]:
+    manifest = generate_plugin_manifest(plugin_dir)
+    plugin_name = str(manifest["name"])
+    version = str(manifest["version"])
+    repo_root = plugin_dir.parents[1]
+    return {
+        "PLUGIN_NAME": plugin_name,
+        "PLUGIN_VERSION": version,
+        "MARKETPLACE_NAME": marketplace_name(repo_root),
+        "CODEX_CACHE_PLUGIN_ROOT": cache_plugin_root(plugin_name, version, repo_root),
+        "CODEX_CACHE_PLUGIN_ROOT_WINDOWS": cache_plugin_root_windows(plugin_name, version, repo_root),
+        "CLAUDE_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}",
+    }
 
 
 def render_codex_hooks(plugin_dir: Path) -> dict[str, Any] | None:
+    rendered_intents = hook_intents.render_platform_hooks(
+        plugin_dir,
+        "codex",
+        hook_intent_context(plugin_dir),
+    )
+    if rendered_intents is not None:
+        return rendered_intents
+
     template_path = plugin_dir / "hooks" / "codex" / "hooks.json"
     if not template_path.exists():
         return None
@@ -90,12 +146,13 @@ def render_codex_hooks(plugin_dir: Path) -> dict[str, Any] | None:
     manifest = generate_plugin_manifest(plugin_dir)
     plugin_name = str(manifest["name"])
     version = str(manifest["version"])
+    repo_root = plugin_dir.parents[1]
     replacements = {
         "{{PLUGIN_NAME}}": plugin_name,
         "{{PLUGIN_VERSION}}": version,
-        "{{MARKETPLACE_NAME}}": MARKETPLACE_NAME,
-        "{{CODEX_CACHE_PLUGIN_ROOT}}": cache_plugin_root(plugin_name, version),
-        "{{CODEX_CACHE_PLUGIN_ROOT_WINDOWS}}": cache_plugin_root_windows(plugin_name, version),
+        "{{MARKETPLACE_NAME}}": marketplace_name(repo_root),
+        "{{CODEX_CACHE_PLUGIN_ROOT}}": cache_plugin_root(plugin_name, version, repo_root),
+        "{{CODEX_CACHE_PLUGIN_ROOT_WINDOWS}}": cache_plugin_root_windows(plugin_name, version, repo_root),
     }
 
     rendered = template_path.read_text(encoding="utf-8")
@@ -130,12 +187,9 @@ def copy_codex_package(repo_root: Path, plugin_dir: Path) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(plugin_dir, target, ignore=ignore)
 
+    write_json(target / PLUGIN_MANIFEST, generate_plugin_manifest(plugin_dir))
     render_codex_hooks_template(plugin_dir, target)
     return target
-
-
-def category_for_plugin(plugin_name: str) -> str:
-    return CATEGORY_BY_PLUGIN.get(plugin_name, "Productivity")
 
 
 def display_name(plugin_name: str) -> str:
@@ -158,25 +212,25 @@ def developer_name(author: Any) -> str:
 
 
 def generate_plugin_manifest(plugin_dir: Path) -> dict[str, Any]:
-    claude = read_json(plugin_dir / CLAUDE_MANIFEST)
-    name = str(claude.get("name") or plugin_dir.name)
-    description = str(claude.get("description") or "")
-    author = claude.get("author") or {"name": "Poseidon"}
+    metadata = plugin_metadata(plugin_dir)
+    name = plugin_dir.name
+    description = str(metadata.get("description") or "")
+    author = metadata.get("author") or {"name": "Poseidon"}
 
     manifest: dict[str, Any] = {
         "name": name,
-        "version": str(claude.get("version") or "0.1.0"),
+        "version": str(metadata.get("version") or "0.1.0"),
         "description": description,
         "author": author,
-        "license": str(claude.get("license") or "MIT"),
-        "keywords": list(claude.get("keywords") or []),
+        "license": str(metadata.get("license") or "MIT"),
+        "keywords": list(metadata.get("keywords") or []),
         "skills": "./skills/",
         "interface": {
             "displayName": display_name(name),
             "shortDescription": short_description(description),
             "longDescription": description,
             "developerName": developer_name(author),
-            "category": category_for_plugin(name),
+            "category": str(metadata.get("category") or "Productivity"),
             "capabilities": ["Skills"],
         },
     }
@@ -209,10 +263,11 @@ def generate_marketplace(repo_root: Path, plugin_dirs: list[Path] | None = None)
     if plugin_dirs is None:
         plugin_dirs = discover_plugin_dirs(repo_root)
     entries = [generate_marketplace_entry(plugin_dir) for plugin_dir in plugin_dirs]
+    marketplace = marketplace_metadata(repo_root)
     return {
-        "name": MARKETPLACE_NAME,
+        "name": str(marketplace.get("name") or DEFAULT_MARKETPLACE_NAME),
         "interface": {
-            "displayName": "Poseidon",
+            "displayName": str(marketplace.get("displayName") or "Poseidon"),
         },
         "plugins": entries,
     }
@@ -227,9 +282,9 @@ def generate_marketplace_update(repo_root: Path, selected_plugin_dirs: list[Path
             plugins = []
     else:
         marketplace = {
-            "name": MARKETPLACE_NAME,
+            "name": marketplace_name(repo_root),
             "interface": {
-                "displayName": "Poseidon",
+                "displayName": str(marketplace_metadata(repo_root).get("displayName") or "Poseidon"),
             },
             "plugins": [],
         }

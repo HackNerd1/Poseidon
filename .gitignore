@@ -1,6 +1,7 @@
 .claude/
-
+.codex/
+.agents/plugins/marketplace.json
+.claude-plugin/marketplace.json
 .Poseidon/
 
 __pycache__/
-.codex/generated/

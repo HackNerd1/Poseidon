@@ -7,6 +7,7 @@ Make Poseidon reusable across Claude Code, Codex, and future agent platforms by 
 The guiding rule is:
 
 - `plugins/*/skills/*` is the canonical skill source.
+- `plugins/plugin-metadata.json` is the canonical plugin and marketplace metadata source.
 - Root `scripts/` contains repository-level install, generation, and validation tooling.
 - Skill-local `plugins/*/skills/*/scripts/` remains runtime tooling for that specific skill.
 
@@ -17,6 +18,7 @@ scripts/
   platforms.yaml
   install.py
   validate.py
+  hook_intents.py
   adapters/
     __init__.py
     codex.py
@@ -25,28 +27,36 @@ scripts/
     windsurf.py
 
 plugins/
+  plugin-metadata.json
   ruankao/
     skills/
-    .claude-plugin/
-    .codex-plugin/
   resume/
     skills/
-    .claude-plugin/
-    .codex-plugin/
   algo-coach/
     skills/
-    .claude-plugin/
-    .codex-plugin/
   dev-tools/
     skills/
     hooks/
     scripts/
-    .claude-plugin/
-    .codex-plugin/
 
 .agents/
   plugins/
-    marketplace.json
+    marketplace.json        # installer-generated, ignored
+
+.codex/
+  generated/
+    plugins/
+      <plugin>/
+        .codex-plugin/plugin.json
+
+.claude/
+  generated/
+    plugins/
+      <plugin>/
+        .claude-plugin/plugin.json
+
+.claude-plugin/
+  marketplace.json          # installer-generated, ignored
 ```
 
 `cursor.py` and `windsurf.py` can start as placeholders. The first implementation should support Claude and Codex only.
@@ -105,8 +115,8 @@ Non-interactive mode:
 ```bash
 python scripts/install.py --platform codex --scope repo
 python scripts/install.py --platform codex --scope repo --dry-run
-python scripts/install.py --platform claude --scope user --plugin ruankao
-python scripts/install.py --all --scope user --dry-run
+python scripts/install.py --platform claude --scope repo --plugin ruankao
+python scripts/install.py --all --scope repo --dry-run
 python scripts/install.py --platform codex --scope repo --plugin all --yes
 python scripts/install.py --platform codex --scope repo --plugin all --generate-only
 ```
@@ -132,10 +142,6 @@ Poseidon Installer
     Windsurf
     All supported platforms
 
-? Select install scope
-  > Repo-local
-    User-global
-
 ? Select plugin
   > All plugins
     ruankao
@@ -152,9 +158,10 @@ Poseidon Installer
     No, generate files only
 
 Plan:
-  - Generate plugins/ruankao/.codex-plugin/plugin.json
-  - Generate plugins/resume/.codex-plugin/plugin.json
-  - Update .agents/plugins/marketplace.json
+  - Read plugins/plugin-metadata.json
+  - Generate .codex/generated/plugins/ruankao/.codex-plugin/plugin.json
+  - Generate .codex/generated/plugins/resume/.codex-plugin/plugin.json
+  - Generate .agents/plugins/marketplace.json
   - Run codex plugin marketplace add <repo-root> --json
   - Run codex plugin add ruankao@poseidon --json
   - Validate 14 SKILL.md files
@@ -165,8 +172,9 @@ Plan:
 Expected behavior:
 
 - `--platform codex --scope repo`
-  - Ensure each plugin has `.codex-plugin/plugin.json`.
-  - Generate or update `.agents/plugins/marketplace.json`.
+  - Read canonical Codex plugin metadata from `plugins/plugin-metadata.json`.
+  - Generate each plugin's `.codex-plugin/plugin.json` inside `.codex/generated/plugins/<plugin>/`.
+  - Generate or update `.agents/plugins/marketplace.json` from `plugins/plugin-metadata.json`.
   - Point each marketplace entry to `./.codex/generated/plugins/<plugin-name>`.
   - Generate each Codex package from the canonical plugin source before install, excluding Claude-only defaults such as `hooks/hooks.json`.
   - Render `hooks/codex/hooks.json` to the generated package's `hooks/hooks.json` when a plugin provides Codex hooks.
@@ -174,9 +182,11 @@ Expected behavior:
   - Unless `--generate-only` is present, register the repo marketplace with `codex plugin marketplace add <repo-root> --json`.
   - Unless `--generate-only` is present, install and enable selected plugins with `codex plugin add <plugin>@poseidon --json`.
 - `--platform claude`
-  - Validate existing `.claude-plugin/plugin.json` files.
-  - Reuse `.claude-plugin/marketplace.json`.
-  - Optionally copy or link skills for direct user-level skill install.
+  - Read canonical plugin metadata from `plugins/plugin-metadata.json`.
+  - Generate each plugin's `.claude-plugin/plugin.json` inside `.claude/generated/plugins/<plugin>/`.
+  - Generate or update `.claude-plugin/marketplace.json` from `plugins/plugin-metadata.json`.
+  - Point each marketplace entry to `./.claude/generated/plugins/<plugin-name>`.
+  - Optionally copy or link skills for direct user-level skill install in a later phase.
 - `--plugin <name>`
   - Limit work to one plugin.
 - `--dry-run`
@@ -202,9 +212,12 @@ Validation should check:
 - Skill names use lowercase hyphen-case.
 - Skill descriptions are present and not overly long.
 - Codex plugin manifests use `"skills": "./skills/"`.
-- Claude plugin manifests still parse.
+- Claude generated plugin manifests still parse and match canonical metadata.
 - Marketplace entries point to generated Codex package folders.
 - Generated files are in sync with canonical plugin metadata.
+- Generated marketplace files are in sync with canonical marketplace metadata.
+- Source plugin directories do not maintain hand-written `.codex-plugin/plugin.json` files.
+- Source plugin directories do not maintain hand-written `.claude-plugin/plugin.json` files.
 - Generated Codex packages do not include default hooks unless those hooks are Codex-compatible.
 
 ## Skill Frontmatter Policy
@@ -233,16 +246,71 @@ Move parameter hints such as `arguments` into the body:
 
 Hooks should not be treated as generic plugin metadata. They are platform-specific integration code.
 
-Recommended layout:
+The long-term source of truth should be hook intent files, not hand-written
+platform hook JSON. Intent files describe the semantic event and shared command
+behavior once; the installer renders Claude/Codex hook JSON from that source
+using each platform's event names, root variables, async support, stdout rules,
+and Windows command variants.
+
+Recommended layout after the intent migration:
 
 ```text
 plugins/dev-tools/hooks/
-  hooks.json        # legacy Claude-compatible default
-  claude/hooks.json
-  codex/hooks.json
+  intents/
+    notify-response-ready.yaml
+    notify-permission-required.yaml
+  hooks.json          # generated legacy Claude-compatible default, if committed
+  claude/hooks.json   # generated Claude hook output, if committed
+  codex/hooks.json    # generated Codex hook output, if committed
 ```
 
-Shared executable logic should stay in `plugins/dev-tools/scripts/`, while event names, environment variables, and matcher syntax live in platform-specific hook configs.
+Shared executable logic should stay in `plugins/dev-tools/scripts/`, while event
+names, environment variables, matcher syntax, async behavior, and stdout policy
+live in the intent platform mapping.
+
+Initial intent shape:
+
+```yaml
+id: notify-response-ready
+semantic_event: turn_stop
+handler:
+  type: command
+  script: scripts/notify.py
+  title:
+    codex: Codex
+    claude: Claude Code
+  message:
+    codex: Response ready
+    claude: Response ready
+  no_wait: true
+  quiet: true
+  best_effort: true
+platforms:
+  codex:
+    event: Stop
+    timeout: 15
+    status_message: Sending notification
+    root_var: CODEX_CACHE_PLUGIN_ROOT
+    windows_root_var: CODEX_CACHE_PLUGIN_ROOT_WINDOWS
+    stdout_policy: empty
+  claude:
+    event: Stop
+    timeout: 35
+    async: true
+    root_var: CLAUDE_PLUGIN_ROOT
+```
+
+Installer behavior:
+
+- If `plugins/<plugin>/hooks/intents/*.yaml` exists, adapters render platform
+  hooks from intents.
+- If no intents exist, Codex falls back to `hooks/codex/hooks.json` for backward
+  compatibility during migration.
+- Codex generated packages always receive rendered hooks at `hooks/hooks.json`.
+- Claude may receive rendered `hooks/claude/hooks.json` and `hooks/hooks.json`;
+  during migration the legacy hand-written Claude files can remain committed.
+- Validation checks generated Codex hooks against intent output and still applies
+  Codex-specific hook safety checks.
 
 Codex hook templates may use installer-rendered placeholders:
 
@@ -255,12 +323,19 @@ Codex hook templates may use installer-rendered placeholders:
 Codex hook configs must not use `async: true` or Claude-only variables such as `${CLAUDE_PLUGIN_ROOT}`.
 Notification-style Codex hooks must use `--quiet --best-effort` so they do not write non-JSON text to stdout or fail the agent turn when the local desktop notification backend is unavailable. Click-to-focus is platform-specific: Windows uses a detached NotifyIcon listener, macOS requires `terminal-notifier` for reliable click activation, and Linux requires an action-capable notification daemon plus `xdotool` or `wmctrl`.
 
+Claude hook configs may use `async: true`, `Notification`, and
+`${CLAUDE_PLUGIN_ROOT}`. These must be generated only for Claude and must never
+leak into Codex packages.
+
 ## Implementation Phases
 
 ### Phase 1: Codex Packaging
 
 - Add `.codex-plugin/plugin.json` for each plugin.
-- Add `.agents/plugins/marketplace.json`.
+- Replace hand-maintained source `.codex-plugin/plugin.json` files with
+  `plugins/plugin-metadata.json` and generate Codex manifests only into
+  `.codex/generated/plugins/<plugin>/`.
+- Generate ignored `.agents/plugins/marketplace.json` during install.
 - Generate Codex package folders under `.codex/generated/plugins/`.
 - Add initial `scripts/platforms.yaml`.
 - Add `scripts/validate.py` with basic skill and manifest checks.
@@ -283,8 +358,10 @@ Notification-style Codex hooks must use `--quiet --best-effort` so they do not w
 ### Phase 4: Claude Parity
 
 - Add `scripts/adapters/claude.py`.
-- Validate existing `.claude-plugin` manifests.
-- Preserve current Claude marketplace behavior.
+- Generate Claude package folders under `.claude/generated/plugins/`.
+- Generate `.claude-plugin/marketplace.json` from `plugins/plugin-metadata.json`.
+- Validate generated `.claude-plugin` manifests.
+- Preserve current Claude marketplace entry shape while changing sources to generated packages.
 
 ### Phase 5: Optional Rule Adapters
 
@@ -292,16 +369,48 @@ Notification-style Codex hooks must use `--quiet --best-effort` so they do not w
 - Add Windsurf adapter only if the skill body can fit its rule size limits.
 - Keep generated adapter files out of canonical skill sources unless they are intentionally committed.
 
+### Phase 6: Hook Intent Generation
+
+- Add `plugins/dev-tools/hooks/intents/*.yaml` as canonical hook definitions.
+- Add `scripts/hook_intents.py` with a standard-library parser for the controlled
+  intent YAML subset and renderers for Codex and Claude.
+- Update the Codex adapter to prefer intent-rendered hooks when intent files are
+  present, falling back to `hooks/codex/hooks.json` during migration.
+- Update validation so generated Codex package hooks must match intent output
+  when intents are present.
+- Optionally add a generation command later to refresh committed
+  `hooks/claude/hooks.json`, `hooks/codex/hooks.json`, and legacy
+  `hooks/hooks.json` from intents for easier review.
+
+### Phase 7: Single-Source Hook Cleanup
+
+- Once intent generation is stable, mark hand-written platform hook JSON as
+  generated artifacts.
+- Decide whether generated hook JSON remains committed for transparency or is
+  produced only under `.codex/generated/plugins/`.
+- Expand intent platform mappings for Cursor/Windsurf only when those platforms
+  have a hook/rule surface that can faithfully represent the semantic event.
+
 ## Acceptance Criteria
 
 - `python scripts/validate.py --all` passes.
-- Codex can discover all four plugins from `.agents/plugins/marketplace.json`.
+- Codex can discover all four plugins after running the installer-generated `.agents/plugins/marketplace.json`.
 - Claude install docs and existing plugin metadata still work.
 - No skill content is duplicated for Codex.
 - Hook migration is explicit and does not silently reuse Claude-only hook configuration.
+- Hook intent files are the canonical source for dev-tools notification hooks.
+- Codex generated hook output remains quiet/best-effort and contains no Claude-only fields.
 
 ## Open Decisions
 
-- Whether generated `.codex-plugin/plugin.json` files should be committed or produced on install.
+- Decision: source plugin directories should not maintain Codex manifests; they
+  are generated from `plugins/plugin-metadata.json` during install/package generation.
+- Decision: source plugin directories should not maintain Claude manifests; they
+  are generated from `plugins/plugin-metadata.json` during install/package generation.
+- Decision: platform marketplace files should not be hand-maintained; both
+  `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json` are
+  generated from `plugins/plugin-metadata.json` and ignored by git.
 - Whether user-level installs should copy files or create symlinks.
 - Whether Cursor/Windsurf adapters are in scope for the first release.
+- Whether generated platform hook JSON should be committed or treated as purely
+  installer-generated output.

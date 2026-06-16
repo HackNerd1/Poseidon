@@ -1,0 +1,81 @@
+{
+  "marketplace": {
+    "name": "poseidon",
+    "displayName": "Poseidon",
+    "owner": {
+      "name": "HackNerd1"
+    },
+    "description": "Poseidon — Claude Code 插件大仓，覆盖软考备考、开发提效、生活自动化等多场景"
+  },
+  "plugins": {
+    "algo-coach": {
+      "version": "0.1.0",
+      "description": "算法学习助手 — 关联 hello-algo.com 知识点、添加解题思路、优化算法解法",
+      "author": {
+        "name": "Hansel"
+      },
+      "license": "MIT",
+      "keywords": [
+        "algorithm",
+        "leetcode",
+        "hello-algo",
+        "learning",
+        "coaching"
+      ],
+      "category": "Education"
+    },
+    "dev-tools": {
+      "version": "0.1.0",
+      "description": "开发提效工具集 — 覆盖 Debug 诊断、代码审查辅助、日志分析等开发场景",
+      "author": {
+        "name": "Hansel"
+      },
+      "license": "MIT",
+      "keywords": [
+        "debug",
+        "diagnostic",
+        "logging",
+        "troubleshooting",
+        "dev-tools"
+      ],
+      "category": "Development"
+    },
+    "resume": {
+      "version": "0.1.0",
+      "description": "简历相关技能集合 — 从 Git 仓库提取项目经验、交互式创建符合简历规范的完整简历（含 JD 匹配优化，支持所有岗位）",
+      "author": {
+        "name": "Hansel"
+      },
+      "license": "MIT",
+      "keywords": [
+        "resume",
+        "简历",
+        "STAR",
+        "SARL",
+        "ATS",
+        "面试",
+        "项目经验",
+        "JD匹配"
+      ],
+      "category": "Career"
+    },
+    "ruankao": {
+      "version": "0.1.0",
+      "description": "软考系统分析师论文备考工具集 — 覆盖论文写作、优化、帮记词生成和音频合成四大场景",
+      "author": {
+        "name": "HackNerd1",
+        "url": "https://github.com/HackNerd1/ruankao"
+      },
+      "license": "MIT",
+      "keywords": [
+        "ruankao",
+        "软考",
+        "论文",
+        "系统分析师",
+        "备考",
+        "tts"
+      ],
+      "category": "Education"
+    }
+  }
+}

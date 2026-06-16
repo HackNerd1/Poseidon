@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import re
 import sys
@@ -40,6 +41,92 @@ def read_json(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"{path} must contain a JSON object")
     return data
+
+
+def hook_intent_files(plugin_dir: Path) -> list[Path]:
+    intents_dir = plugin_dir / "hooks" / "intents"
+    if not intents_dir.exists():
+        return []
+    return sorted(intents_dir.glob("*.yaml"))
+
+
+def hook_intent_context(root: Path, plugin_dir: Path) -> dict[str, Any]:
+    manifest = codex.generate_plugin_manifest(plugin_dir)
+    plugin_name = str(manifest["name"])
+    plugin_version = str(manifest["version"])
+    codex_cache_root = codex.cache_plugin_root(plugin_name, plugin_version, root)
+    codex_cache_root_windows = codex.cache_plugin_root_windows(plugin_name, plugin_version, root)
+    claude_plugin_root = "${CLAUDE_PLUGIN_ROOT}"
+    return {
+        "repo_root": str(root),
+        "plugin_dir": str(plugin_dir),
+        "plugin_name": plugin_name,
+        "plugin_version": plugin_version,
+        "marketplace_name": codex.marketplace_name(root),
+        "codex_cache_plugin_root": codex_cache_root,
+        "codex_cache_plugin_root_windows": codex_cache_root_windows,
+        "claude_plugin_root": claude_plugin_root,
+        "PLUGIN_NAME": plugin_name,
+        "PLUGIN_VERSION": plugin_version,
+        "MARKETPLACE_NAME": codex.marketplace_name(root),
+        "CODEX_CACHE_PLUGIN_ROOT": codex_cache_root,
+        "CODEX_CACHE_PLUGIN_ROOT_WINDOWS": codex_cache_root_windows,
+        "CLAUDE_PLUGIN_ROOT": claude_plugin_root,
+        "plugin": {
+            "name": plugin_name,
+            "version": plugin_version,
+        },
+        "codex": {
+            "cache_plugin_root": codex_cache_root,
+            "cache_plugin_root_windows": codex_cache_root_windows,
+        },
+        "claude": {
+            "plugin_root": claude_plugin_root,
+        },
+        "placeholders": {
+            "PLUGIN_NAME": plugin_name,
+            "PLUGIN_VERSION": plugin_version,
+            "MARKETPLACE_NAME": codex.marketplace_name(root),
+            "CODEX_CACHE_PLUGIN_ROOT": codex_cache_root,
+            "CODEX_CACHE_PLUGIN_ROOT_WINDOWS": codex_cache_root_windows,
+            "CLAUDE_PLUGIN_ROOT": claude_plugin_root,
+        },
+    }
+
+
+def render_hook_intent_hooks(
+    root: Path,
+    plugin_dir: Path,
+    platform: str,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    intent_files = hook_intent_files(plugin_dir)
+    if not intent_files:
+        return None, []
+
+    intents_dir = plugin_dir / "hooks" / "intents"
+    try:
+        hook_intents = importlib.import_module("hook_intents")
+    except Exception as exc:
+        return None, [f"{intents_dir}: unable to load hook_intents renderer: {exc}"]
+
+    try:
+        rendered = hook_intents.render_platform_hooks(
+            plugin_dir,
+            platform,
+            hook_intent_context(root, plugin_dir),
+        )
+    except Exception as exc:
+        return None, [f"{intents_dir}: unable to render {platform} hooks from intents: {exc}"]
+
+    if not isinstance(rendered, dict):
+        return None, [f"{intents_dir}: rendered {platform} hooks must be a JSON object"]
+
+    try:
+        json.dumps(rendered)
+    except (TypeError, ValueError) as exc:
+        return None, [f"{intents_dir}: rendered {platform} hooks are not JSON serializable: {exc}"]
+
+    return rendered, []
 
 
 def parse_frontmatter(path: Path) -> dict[str, str]:
@@ -137,90 +224,119 @@ def validate_codex_hooks(path: Path, hooks_config: dict[str, Any]) -> list[str]:
 
 def validate_codex(root: Path) -> list[str]:
     errors: list[str] = []
+    try:
+        metadata = codex.read_metadata(root)
+    except (json.JSONDecodeError, ValueError, FileNotFoundError) as exc:
+        errors.append(f"Invalid Codex plugin metadata {codex.metadata_path(root)}: {exc}")
+        return errors
+
     plugin_dirs = codex.discover_plugin_dirs(root)
     if not plugin_dirs:
         errors.append("No plugins discovered under plugins/*")
         return errors
+    metadata_plugins = metadata.get("plugins")
+    if not isinstance(metadata_plugins, dict):
+        errors.append(f"{codex.metadata_path(root)}: plugins must be an object")
+        return errors
 
     for plugin_dir in plugin_dirs:
-        expected = codex.generate_plugin_manifest(plugin_dir)
-        manifest_path = codex.plugin_manifest_path(plugin_dir)
-        if not manifest_path.exists():
-            errors.append(f"Missing Codex manifest: {manifest_path}")
-            continue
-        try:
-            actual = read_json(manifest_path)
-        except (json.JSONDecodeError, ValueError) as exc:
-            errors.append(f"Invalid Codex manifest {manifest_path}: {exc}")
-            continue
+        if plugin_dir.name not in metadata_plugins:
+            errors.append(f"{codex.metadata_path(root)}: missing metadata for plugin '{plugin_dir.name}'")
 
-        if actual.get("name") != plugin_dir.name:
-            errors.append(f"{manifest_path}: name must match plugin folder '{plugin_dir.name}'")
-        if actual.get("skills") != "./skills/":
-            errors.append(f"{manifest_path}: skills must be './skills/'")
-        if not isinstance(actual.get("interface"), dict):
-            errors.append(f"{manifest_path}: missing interface metadata object")
-        if not codex.json_equal(actual, expected):
-            errors.append(f"{manifest_path}: generated content is not in sync with Claude metadata")
-
-    marketplace_path = codex.marketplace_path(root)
-    if not marketplace_path.exists():
-        errors.append(f"Missing Codex marketplace: {marketplace_path}")
-        return errors
-
-    try:
-        marketplace = read_json(marketplace_path)
-    except (json.JSONDecodeError, ValueError) as exc:
-        errors.append(f"Invalid Codex marketplace {marketplace_path}: {exc}")
-        return errors
-
-    expected_marketplace = codex.generate_marketplace(root, plugin_dirs)
-    if not codex.json_equal(marketplace, expected_marketplace):
-        errors.append(f"{marketplace_path}: generated content is not in sync with plugin manifests")
-
-    entries = marketplace.get("plugins")
-    if not isinstance(entries, list):
-        errors.append(f"{marketplace_path}: plugins must be an array")
-        return errors
+        source_manifest = codex.plugin_manifest_path(plugin_dir)
+        if source_manifest.exists():
+            errors.append(f"{source_manifest}: source Codex manifests are generated; keep metadata in {codex.PLUGIN_METADATA}")
 
     plugin_names = {plugin_dir.name for plugin_dir in plugin_dirs}
-    entry_names = set()
-    for entry in entries:
-        if not isinstance(entry, dict):
-            errors.append(f"{marketplace_path}: every plugin entry must be an object")
-            continue
-        name = entry.get("name")
-        entry_names.add(name)
-        if name not in plugin_names:
-            errors.append(f"{marketplace_path}: entry references unknown plugin '{name}'")
-        source = entry.get("source")
-        if source != {"source": "local", "path": codex.package_source_path(str(name))}:
-            errors.append(f"{marketplace_path}: invalid source for plugin '{name}'")
-        policy = entry.get("policy")
-        if not isinstance(policy, dict):
-            errors.append(f"{marketplace_path}: missing policy for plugin '{name}'")
-        else:
-            if policy.get("installation") != "AVAILABLE":
-                errors.append(f"{marketplace_path}: plugin '{name}' installation policy must be AVAILABLE")
-            if policy.get("authentication") != "ON_INSTALL":
-                errors.append(f"{marketplace_path}: plugin '{name}' authentication policy must be ON_INSTALL")
-        if not entry.get("category"):
-            errors.append(f"{marketplace_path}: plugin '{name}' missing category")
+    extra_metadata = set(metadata_plugins) - plugin_names
+    if extra_metadata:
+        errors.append(
+            f"{codex.metadata_path(root)}: metadata references unknown plugin(s): "
+            f"{', '.join(sorted(extra_metadata))}"
+        )
 
-    missing = plugin_names - entry_names
-    if missing:
-        errors.append(f"{marketplace_path}: missing marketplace entries for {', '.join(sorted(missing))}")
+    marketplace_path = codex.marketplace_path(root)
+    if marketplace_path.exists():
+        try:
+            marketplace = read_json(marketplace_path)
+        except (json.JSONDecodeError, ValueError) as exc:
+            errors.append(f"Invalid Codex marketplace {marketplace_path}: {exc}")
+            return errors
+
+        expected_marketplace = codex.generate_marketplace(root, plugin_dirs)
+        if not codex.json_equal(marketplace, expected_marketplace):
+            errors.append(f"{marketplace_path}: generated content is not in sync with plugin manifests")
+
+        entries = marketplace.get("plugins")
+        if not isinstance(entries, list):
+            errors.append(f"{marketplace_path}: plugins must be an array")
+            return errors
+
+        plugin_names = {plugin_dir.name for plugin_dir in plugin_dirs}
+        entry_names = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                errors.append(f"{marketplace_path}: every plugin entry must be an object")
+                continue
+            name = entry.get("name")
+            entry_names.add(name)
+            if name not in plugin_names:
+                errors.append(f"{marketplace_path}: entry references unknown plugin '{name}'")
+            source = entry.get("source")
+            if source != {"source": "local", "path": codex.package_source_path(str(name))}:
+                errors.append(f"{marketplace_path}: invalid source for plugin '{name}'")
+            policy = entry.get("policy")
+            if not isinstance(policy, dict):
+                errors.append(f"{marketplace_path}: missing policy for plugin '{name}'")
+            else:
+                if policy.get("installation") != "AVAILABLE":
+                    errors.append(f"{marketplace_path}: plugin '{name}' installation policy must be AVAILABLE")
+                if policy.get("authentication") != "ON_INSTALL":
+                    errors.append(f"{marketplace_path}: plugin '{name}' authentication policy must be ON_INSTALL")
+            if not entry.get("category"):
+                errors.append(f"{marketplace_path}: plugin '{name}' missing category")
+
+        missing = plugin_names - entry_names
+        if missing:
+            errors.append(f"{marketplace_path}: missing marketplace entries for {', '.join(sorted(missing))}")
 
     for plugin_dir in plugin_dirs:
         package_dir = codex.package_plugin_path(root, plugin_dir.name)
         if not package_dir.exists():
-            errors.append(f"Missing generated Codex package: {package_dir}")
             continue
         package_manifest = package_dir / codex.PLUGIN_MANIFEST
         if not package_manifest.exists():
             errors.append(f"Missing Codex package manifest: {package_manifest}")
+        else:
+            try:
+                actual_manifest = read_json(package_manifest)
+                expected_manifest = codex.generate_plugin_manifest(plugin_dir)
+            except (json.JSONDecodeError, ValueError) as exc:
+                errors.append(f"Invalid Codex package manifest {package_manifest}: {exc}")
+            else:
+                if actual_manifest.get("name") != plugin_dir.name:
+                    errors.append(
+                        f"{package_manifest}: name must match plugin folder '{plugin_dir.name}'"
+                    )
+                if actual_manifest.get("skills") != "./skills/":
+                    errors.append(f"{package_manifest}: skills must be './skills/'")
+                if not isinstance(actual_manifest.get("interface"), dict):
+                    errors.append(f"{package_manifest}: missing interface metadata object")
+                if not codex.json_equal(actual_manifest, expected_manifest):
+                    errors.append(
+                        f"{package_manifest}: generated content is not in sync with {codex.PLUGIN_METADATA}"
+                    )
         default_hooks = package_dir / "hooks" / "hooks.json"
-        expected_hooks = codex.render_codex_hooks(plugin_dir)
+        intent_files = hook_intent_files(plugin_dir)
+        expected_source = "hooks/codex/hooks.json"
+        if intent_files:
+            expected_source = "hooks/intents/*.yaml"
+            expected_hooks, render_errors = render_hook_intent_hooks(root, plugin_dir, "codex")
+            errors.extend(render_errors)
+            if expected_hooks is not None:
+                errors.extend(validate_codex_hooks(plugin_dir / "hooks" / "intents", expected_hooks))
+        else:
+            expected_hooks = codex.render_codex_hooks(plugin_dir)
         if default_hooks.exists():
             try:
                 actual_hooks = read_json(default_hooks)
@@ -228,9 +344,10 @@ def validate_codex(root: Path) -> list[str]:
                 errors.append(f"Invalid Codex hooks {default_hooks}: {exc}")
                 continue
             if expected_hooks is None:
-                errors.append(f"{default_hooks}: default hooks must come from hooks/codex/hooks.json")
+                if not intent_files:
+                    errors.append(f"{default_hooks}: default hooks must come from {expected_source}")
             elif not codex.json_equal(actual_hooks, expected_hooks):
-                errors.append(f"{default_hooks}: generated hooks are not in sync with hooks/codex/hooks.json")
+                errors.append(f"{default_hooks}: generated hooks are not in sync with {expected_source}")
             errors.extend(validate_codex_hooks(default_hooks, actual_hooks))
         elif expected_hooks is not None:
             errors.append(f"Missing generated Codex hooks: {default_hooks}")
@@ -238,8 +355,25 @@ def validate_codex(root: Path) -> list[str]:
     return errors
 
 
+def validate_claude_hook_intents(root: Path) -> list[str]:
+    errors: list[str] = []
+    for plugin_dir in claude.discover_plugin_dirs(root):
+        if not hook_intent_files(plugin_dir):
+            continue
+        rendered_hooks, render_errors = render_hook_intent_hooks(root, plugin_dir, "claude")
+        if rendered_hooks is None:
+            errors.extend(render_errors)
+            continue
+        hooks = rendered_hooks.get("hooks")
+        if not isinstance(hooks, dict):
+            errors.append(f"{plugin_dir / 'hooks' / 'intents'}: rendered claude hooks missing hooks object")
+    return errors
+
+
 def validate_claude(root: Path) -> list[str]:
-    return claude.validate(root)
+    errors = claude.validate(root)
+    errors.extend(validate_claude_hook_intents(root))
+    return errors
 
 
 def parse_args(argv: list[str], supported_platforms: tuple[str, ...]) -> argparse.Namespace:

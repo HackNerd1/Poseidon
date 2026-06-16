@@ -14,20 +14,21 @@
 ## 安装
 
 ```bash
+# 先生成平台插件包
+python scripts/install.py --platform claude --scope repo --plugin ruankao --yes
+
 # 通过 Marketplace（推荐）
 /plugin marketplace add poseidon https://github.com/HackNerd1/Poseidon
 /plugin install ruankao@poseidon
 
 # 或本地路径安装
-/plugin install ./plugins/ruankao
+/plugin install ./.claude/generated/plugins/ruankao
 ```
 
 ## 目录结构
 
 ```
 ruankao/
-├── .claude-plugin/
-│   └── plugin.json              # 插件清单
 ├── skills/
 │   ├── write-paper/             # 论文从零写作
 │   │   ├── SKILL.md

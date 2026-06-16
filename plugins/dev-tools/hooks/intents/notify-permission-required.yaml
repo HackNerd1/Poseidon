@@ -1,0 +1,33 @@
+id: notify-permission-required
+semantic_event: permission_request
+handler:
+  type: command
+  script: scripts/notify.py
+  title:
+    codex: Codex
+    claude: Claude Code
+  message:
+    codex: Permission required
+    claude: Permission required - Claude needs your approval
+  no_wait: true
+  quiet: true
+  best_effort: true
+platforms:
+  codex:
+    event: PermissionRequest
+    matcher: "*"
+    timeout: 15
+    status_message: Sending notification
+    root_var: CODEX_CACHE_PLUGIN_ROOT
+    windows_root_var: CODEX_CACHE_PLUGIN_ROOT_WINDOWS
+    stdout_policy: empty
+  claude:
+    event: Notification
+    matcher: permission_prompt
+    timeout: 35
+    async: true
+    root_var: CLAUDE_PLUGIN_ROOT
+    stdout_policy: inherited
+    no_wait: false
+    quiet: false
+    best_effort: false

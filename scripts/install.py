@@ -15,6 +15,10 @@ from platform_matrix import implemented_platforms
 
 
 SCOPES = ("repo", "user")
+SUPPORTED_SCOPES = {
+    "codex": ("repo",),
+    "claude": ("repo",),
+}
 
 
 @dataclass(frozen=True)
@@ -35,7 +39,12 @@ def parse_args(argv: list[str], supported_platforms: tuple[str, ...]) -> argpars
     parser.add_argument("--interactive", action="store_true", help="Run the interactive CLI.")
     parser.add_argument("--platform", choices=supported_platforms, help="Target platform.")
     parser.add_argument("--all", action="store_true", help="Target all supported platforms.")
-    parser.add_argument("--scope", choices=SCOPES, default="repo", help="Install scope.")
+    parser.add_argument(
+        "--scope",
+        choices=SCOPES,
+        default="repo",
+        help="Package generation scope. Codex and Claude currently support repo only.",
+    )
     parser.add_argument("--plugin", default="all", help="Plugin name, or 'all'.")
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without writing files.")
     parser.add_argument("--yes", action="store_true", help="Apply without confirmation.")
@@ -72,11 +81,7 @@ def interactive_args(root: Path, supported_platforms: tuple[str, ...]) -> argpar
         platform_choices,
         "codex",
     )
-    scope = prompt_choice(
-        "Select install scope",
-        [("repo", "Repo-local"), ("user", "User-global")],
-        "repo",
-    )
+    selected_platforms = list(supported_platforms) if platform == "all" else [platform]
     plugin_choices = [("all", "All plugins")]
     plugin_choices.extend((path.name, path.name) for path in codex.discover_plugin_dirs(root))
     plugin = prompt_choice("Select plugin", plugin_choices, "all")
@@ -96,7 +101,7 @@ def interactive_args(root: Path, supported_platforms: tuple[str, ...]) -> argpar
         interactive=True,
         platform=None if platform == "all" else platform,
         all=platform == "all",
-        scope=scope,
+        scope="repo",
         plugin=plugin,
         dry_run=mode == "dry-run",
         yes=False,
@@ -112,26 +117,20 @@ def target_platforms(args: argparse.Namespace) -> list[str]:
     raise SystemExit("Specify --platform, --all, or run with no arguments for interactive mode.")
 
 
+def validate_scope(platform: str, scope: str) -> None:
+    if scope not in SUPPORTED_SCOPES.get(platform, SCOPES):
+        supported = ", ".join(SUPPORTED_SCOPES.get(platform, SCOPES))
+        raise ValueError(
+            f"{platform.capitalize()} does not support --scope {scope}; "
+            f"supported scope: {supported}. Use --scope repo for generation and install."
+        )
+
+
 def codex_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list[Operation]:
-    if scope != "repo":
-        return [
-            Operation(
-                "Codex user-global install is reserved for a later phase; use --scope repo for generation.",
-                None,
-            )
-        ]
+    validate_scope("codex", scope)
 
     plugin_dirs = codex.select_plugin_dirs(root, plugin)
     operations: list[Operation] = []
-    for plugin_dir in plugin_dirs:
-        operations.append(
-            Operation(
-                "write",
-                codex.plugin_manifest_path(plugin_dir),
-                codex.generate_plugin_manifest(plugin_dir),
-            )
-        )
-
     marketplace = (
         codex.generate_marketplace(root, codex.discover_plugin_dirs(root))
         if plugin in (None, "", "all")
@@ -169,7 +168,7 @@ def codex_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list
                         "codex",
                         "plugin",
                         "add",
-                        f"{plugin_dir.name}@{codex.MARKETPLACE_NAME}",
+                        f"{plugin_dir.name}@{codex.marketplace_name(root)}",
                         "--json",
                     ],
                 )
@@ -178,13 +177,25 @@ def codex_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list
 
 
 def claude_plan(root: Path, scope: str, plugin: str) -> list[Operation]:
-    errors = claude.validate(root, plugin)
-    if errors:
-        return [Operation(f"Claude validation failed: {error}", None) for error in errors]
-    message = "Claude support is validation-only in this phase; existing .claude-plugin files are unchanged."
-    if scope == "user":
-        message += " User-global installation is reserved for a later phase."
-    return [Operation(message, None)]
+    validate_scope("claude", scope)
+
+    plugin_dirs = codex.select_plugin_dirs(root, plugin)
+    operations: list[Operation] = [
+        Operation(
+            "write",
+            claude.marketplace_path(root),
+            claude.generate_marketplace(root, claude.discover_plugin_dirs(root)),
+        )
+    ]
+    for plugin_dir in plugin_dirs:
+        operations.append(
+            Operation(
+                "sync-claude",
+                claude.package_plugin_path(root, plugin_dir.name),
+                source=plugin_dir,
+            )
+        )
+    return operations
 
 
 def build_plan(
@@ -238,6 +249,9 @@ def apply_operations(operations: list[Operation]) -> None:
             continue
         if operation.action == "sync" and operation.source is not None:
             codex.copy_codex_package(repo_root(), operation.source)
+            continue
+        if operation.action == "sync-claude" and operation.source is not None:
+            claude.copy_claude_package(repo_root(), operation.source)
             continue
         if operation.command:
             result = subprocess.run(operation.command, check=True, text=True, capture_output=True)
