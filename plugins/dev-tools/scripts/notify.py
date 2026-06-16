@@ -3,41 +3,105 @@
 Usage:
     python notify.py <title> <message>
     python notify.py --title "Task Done" --message "Debugger completed."
-    python notify.py --title "Claude Code" --message "Waiting for input" --no-wait
+    python notify.py --title "Codex" --message "Response ready" --no-wait --quiet --best-effort
 
 Click behavior:
-    Windows  — NotifyIcon balloon tip; clicking brings the terminal window to foreground.
-    macOS    — terminal-notifier (if installed, with -activate) or osascript fallback.
-    Linux    — notify-send with --action for click-to-focus.
+    Windows  - NotifyIcon balloon; click restores the foreground window captured at notification time.
+    macOS    - terminal-notifier activates the foreground app captured at notification time.
+               osascript fallback can show a notification, but cannot reliably focus on click.
+    Linux    - notify-send action plus xdotool/wmctrl focuses the captured X11 window when supported.
 
-With --no-wait, the script fires a balloon and exits after ~9s without
-listening for clicks. Use this in automated/hook contexts.
+Use --no-wait in hooks. On Windows/Linux it starts a short-lived detached listener
+when click handling needs one, then returns immediately.
 """
 
-import subprocess
-import sys
+from __future__ import annotations
+
+import argparse
+import base64
 import os
 import platform
-import argparse
-import tempfile
+import shlex
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
 
-
-# ── platform detection ──────────────────────────────────────────────
 
 SYSTEM = platform.system()
+QUIET = False
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Windows — NotifyIcon balloon tip with click-to-focus
-# ═══════════════════════════════════════════════════════════════════════
+@dataclass(frozen=True)
+class MacTarget:
+    bundle_id: str
+    app_name: str
 
-def _get_foreground_window_ps() -> str:
-    """Return PowerShell snippet that captures the foreground window handle."""
-    return """
+
+@dataclass(frozen=True)
+class LinuxTarget:
+    window_id: str
+
+
+def _info(message: str) -> None:
+    if not QUIET:
+        print(message)
+
+
+def _run(command: list[str], timeout: int = 10) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def _popen_detached(command: list[str]) -> bool:
+    kwargs = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    if SYSTEM == "Windows":
+        kwargs["creationflags"] = (
+            getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+        )
+    else:
+        kwargs["start_new_session"] = True
+
+    try:
+        subprocess.Popen(command, **kwargs)
+        return True
+    except OSError:
+        return False
+
+
+def _shell_join(command: list[str]) -> str:
+    return " ".join(shlex.quote(part) for part in command)
+
+
+# Windows -----------------------------------------------------------------
+
+def _ps_single_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _ps_encoded_command(script: str) -> str:
+    return base64.b64encode(script.encode("utf-16le")).decode("ascii")
+
+
+def _windows_notify_script(title: str, message: str, timeout_seconds: int) -> str:
+    title_literal = _ps_single_quote(title)
+    message_literal = _ps_single_quote(message)
+    return f"""
+$ErrorActionPreference = 'SilentlyContinue'
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
-public class Win32 {
+public class Win32 {{
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
@@ -48,66 +112,17 @@ public class Win32 {
     [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-}
+}}
 '@
-$hwnd = [Win32]::GetForegroundWindow()
+
+$fgHwnd = [Win32]::GetForegroundWindow()
 $sb = New-Object System.Text.StringBuilder(256)
-[Win32]::GetWindowText($hwnd, $sb, 256) | Out-Null
-$title = $sb.ToString()
-$pid = 0
-[Win32]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null
-Write-Output "$hwnd|$title|$pid"
-"""
-
-
-def _notify_windows(title: str, message: str, no_wait: bool = False) -> bool:
-    """Send a Windows toast notification.
-
-    When no_wait is False, spawns a listener that catches clicks and brings
-    the foreground window back into focus. When True, fires the toast and
-    returns immediately — suitable for automated/hook contexts."""
-    if no_wait:
-        title_escaped = title.replace('"', '`"').replace('$', '`$')
-        msg_escaped = message.replace('"', '`"').replace('$', '`$')
-        ps_script = f'''
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-$icon = [System.Drawing.SystemIcons]::Information
-$balloon = New-Object System.Windows.Forms.NotifyIcon
-$balloon.Icon = $icon
-$balloon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
-$balloon.BalloonTipTitle = "{title_escaped}"
-$balloon.BalloonTipText = "{msg_escaped}"
-$balloon.Visible = $true
-$balloon.ShowBalloonTip(8000)
-Start-Sleep -Seconds 9
-$balloon.Dispose()
-Write-Output "[notify] Balloon tip shown"
-'''
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_script],
-            capture_output=True,
-            text=True,
-            timeout=12,
-        )
-        if result.returncode != 0 and result.stderr:
-            print(f"[notify:windows] {result.stderr.strip()}", file=sys.stderr)
-        if result.stdout:
-            print(result.stdout.strip())
-        return result.returncode == 0
-
-    title_escaped = title.replace('"', "'")
-    msg_escaped = message.replace('"', "'")
-    ps_script = rf'''
-{_get_foreground_window_ps()}
-
-$fgHwnd = $hwnd
-$fgTitle = $title
+[Win32]::GetWindowText($fgHwnd, $sb, 256) | Out-Null
+$fgTitle = $sb.ToString()
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# Hidden form required for NotifyIcon event dispatching
 $form = New-Object System.Windows.Forms.Form
 $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
 $form.ShowInTaskbar = $false
@@ -116,17 +131,11 @@ $form.TopMost = $false
 $balloon = New-Object System.Windows.Forms.NotifyIcon
 $balloon.Icon = [System.Drawing.SystemIcons]::Information
 $balloon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
-$balloon.BalloonTipTitle = '<<<TITLE>>>'
-$balloon.BalloonTipText = '<<<MESSAGE>>>'
+$balloon.BalloonTipTitle = {title_literal}
+$balloon.BalloonTipText = {message_literal}
 
-$clicked = $false
 $balloon.add_BalloonTipClicked({{
-    $script:clicked = $true
-
-    # AllowSetForegroundWindow authorises us to set foreground because we
-    # just received a user input event (the click on the balloon).
     [Win32]::AllowSetForegroundWindow(-1) | Out-Null
-
     if ($fgHwnd -ne [IntPtr]::Zero) {{
         $foreHwnd = [Win32]::GetForegroundWindow()
         $foreThr = [Win32]::GetWindowThreadProcessId($foreHwnd, [IntPtr]::Zero)
@@ -134,32 +143,26 @@ $balloon.add_BalloonTipClicked({{
         if ($foreThr -ne $curThr) {{
             [Win32]::AttachThreadInput($curThr, $foreThr, $true) | Out-Null
         }}
-
         if ([Win32]::IsIconic($fgHwnd)) {{
-            [Win32]::ShowWindow($fgHwnd, 9)  # SW_RESTORE
+            [Win32]::ShowWindow($fgHwnd, 9) | Out-Null
         }}
-
-        # HWND_TOPMOST -> HWND_NOTOPMOST trick raises z-order
-        $HWND_TOPMOST = [IntPtr](-1); $HWND_NOTOPMOST = [IntPtr](-2)
-        $SWP_NOSIZE = 0x0001; $SWP_NOMOVE = 0x0002
+        $HWND_TOPMOST = [IntPtr](-1)
+        $HWND_NOTOPMOST = [IntPtr](-2)
+        $SWP_NOSIZE = 0x0001
+        $SWP_NOMOVE = 0x0002
         [Win32]::SetWindowPos($fgHwnd, $HWND_TOPMOST, 0, 0, 0, 0, $SWP_NOSIZE -bor $SWP_NOMOVE) | Out-Null
         [Win32]::SetWindowPos($fgHwnd, $HWND_NOTOPMOST, 0, 0, 0, 0, $SWP_NOSIZE -bor $SWP_NOMOVE) | Out-Null
         [Win32]::SetForegroundWindow($fgHwnd) | Out-Null
-
         if ($foreThr -ne $curThr) {{
             [Win32]::AttachThreadInput($curThr, $foreThr, $false) | Out-Null
         }}
     }}
-
     $balloon.Dispose()
     $form.Close()
 }})
-$balloon.Visible = $true
-$balloon.ShowBalloonTip(30000)
 
-# 30s timeout timer
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 30000
+$timer.Interval = {timeout_seconds * 1000}
 $timer.Add_Tick({{
     $timer.Stop()
     $balloon.Dispose()
@@ -167,170 +170,244 @@ $timer.Add_Tick({{
 }})
 $timer.Start()
 
-# Run the WinForms message loop - required for NotifyIcon events to fire
+$balloon.Visible = $true
+$balloon.ShowBalloonTip({timeout_seconds * 1000})
 [System.Windows.Forms.Application]::Run($form)
+"""
 
-if ($clicked) {{
-    Write-Output "[notify] Balloon clicked - focused window '$fgTitle'"
-}} else {{
-    Write-Output "[notify] Balloon shown (no click)"
-}}
-'''
 
-    # Replace placeholders with actual content
-    ps_script = ps_script.replace('<<<TITLE>>>', title_escaped)
-    ps_script = ps_script.replace('<<<MESSAGE>>>', msg_escaped)
+def _notify_windows(title: str, message: str, no_wait: bool, timeout_seconds: int) -> bool:
+    encoded = _ps_encoded_command(_windows_notify_script(title, message, timeout_seconds))
+    command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded]
+    if no_wait:
+        return _popen_detached(command)
 
-    # Write to temp file to avoid -Command escaping issues
-    fd, tmp_path = tempfile.mkstemp(suffix='.ps1', prefix='claude_notify_')
-    with os.fdopen(fd, 'w', encoding='utf-8') as f:
-        f.write(ps_script)
+    result = _run(command, timeout=timeout_seconds + 5)
+    if result.returncode == 0:
+        _info("[notify:windows] notification sent")
+    return result.returncode == 0
 
+
+# macOS -------------------------------------------------------------------
+
+def _mac_frontmost_target() -> MacTarget | None:
+    script = """
+tell application "System Events"
+    set frontApp to first application process whose frontmost is true
+    set appName to name of frontApp
+    try
+        set bundleId to bundle identifier of frontApp
+    on error
+        set bundleId to ""
+    end try
+end tell
+return bundleId & "\t" & appName
+"""
     try:
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tmp_path],
-            capture_output=True,
-            text=True,
-            timeout=35,
-        )
-    finally:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
+        result = _run(["osascript", "-e", script], timeout=3)
+    except (OSError, subprocess.TimeoutExpired):
+        result = None
 
-    if result.returncode != 0 and result.stderr:
-        print(f"[notify:windows] {result.stderr.strip()}", file=sys.stderr)
-    if result.stdout:
-        print(result.stdout.strip())
-    return result.returncode == 0
-    if result.returncode != 0 and result.stderr:
-        print(f"[notify:windows] {result.stderr.strip()}", file=sys.stderr)
-    if result.stdout:
-        print(result.stdout.strip())
-    return result.returncode == 0
+    if result and result.returncode == 0:
+        raw = result.stdout.strip()
+        if raw:
+            bundle_id, _, app_name = raw.partition("\t")
+            if bundle_id:
+                return MacTarget(bundle_id=bundle_id, app_name=app_name or bundle_id)
 
+    term_program = os.environ.get("TERM_PROGRAM", "")
+    fallback_ids = {
+        "Apple_Terminal": ("com.apple.Terminal", "Terminal"),
+        "iTerm.app": ("com.googlecode.iterm2", "iTerm2"),
+        "WezTerm": ("com.github.wez.wezterm", "WezTerm"),
+        "vscode": ("com.microsoft.VSCode", "Visual Studio Code"),
+    }
+    if term_program in fallback_ids:
+        bundle_id, app_name = fallback_ids[term_program]
+        return MacTarget(bundle_id=bundle_id, app_name=app_name)
+    return None
 
-# ═══════════════════════════════════════════════════════════════════════
-# macOS — terminal-notifier (preferred) or osascript fallback
-# ═══════════════════════════════════════════════════════════════════════
 
 def _notify_macos(title: str, message: str) -> bool:
-    """Send a macOS notification. Tries terminal-notifier first (supports
-    click-to-activate), falls back to osascript."""
-    # terminal-notifier supports -activate to bring the calling app to foreground
-    if _has_terminal_notifier():
-        result = subprocess.run(
-            [
-                "terminal-notifier",
-                "-title", title,
-                "-message", message,
-                "-activate", "com.googlecode.iterm2",
-                "-sender", "com.googlecode.iterm2",
-            ],
-            capture_output=True,
-            text=True,
-        )
+    target = _mac_frontmost_target()
+
+    if shutil.which("terminal-notifier"):
+        command = ["terminal-notifier", "-title", title, "-message", message]
+        if target:
+            command.extend(["-activate", target.bundle_id])
+        result = _run(command, timeout=10)
+        if result.returncode != 0 and target:
+            result = _run(["terminal-notifier", "-title", title, "-message", message], timeout=10)
         if result.returncode == 0:
-            print("[notify:macos] terminal-notifier sent (click to focus)")
+            suffix = f" (click activates {target.app_name})" if target else ""
+            _info(f"[notify:macos] terminal-notifier sent{suffix}")
             return True
 
-    # osascript fallback — no click support
-    escaped_msg = message.replace('"', '\\"')
-    escaped_title = title.replace('"', '\\"')
+    escaped_msg = message.replace("\\", "\\\\").replace('"', '\\"')
+    escaped_title = title.replace("\\", "\\\\").replace('"', '\\"')
     script = f'display notification "{escaped_msg}" with title "{escaped_title}" sound name "default"'
-    result = subprocess.run(
-        ["osascript", "-e", script],
-        capture_output=True,
-        text=True,
-    )
+    result = _run(["osascript", "-e", script], timeout=5)
     if result.returncode == 0:
-        print("[notify:macos] osascript notification sent")
+        _info("[notify:macos] osascript notification sent (click-to-focus unavailable)")
     return result.returncode == 0
 
 
-def _has_terminal_notifier() -> bool:
-    """Check whether terminal-notifier is available on PATH."""
-    result = subprocess.run(
-        ["which", "terminal-notifier"],
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
+# Linux -------------------------------------------------------------------
+
+def _linux_frontmost_target() -> LinuxTarget | None:
+    if not os.environ.get("DISPLAY"):
+        return None
+    if shutil.which("xdotool"):
+        result = _run(["xdotool", "getactivewindow"], timeout=3)
+        window_id = result.stdout.strip()
+        if result.returncode == 0 and window_id:
+            return LinuxTarget(window_id=window_id)
+    return None
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Linux — notify-send with --action for click handling
-# ═══════════════════════════════════════════════════════════════════════
-
-def _notify_linux(title: str, message: str) -> bool:
-    """Send a Linux notification via notify-send.  Uses --action to add
-    a 'Focus' button when the notification daemon supports it."""
-    # Try with an action button first (GNOME Shell, KDE, most modern DEs)
-    result = subprocess.run(
-        [
-            "notify-send",
-            "--urgency=normal",
-            "--action=focus=Focus",
-            title,
-            message,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        # Fall back to bare notify-send without actions
-        result = subprocess.run(
-            ["notify-send", title, message],
-            capture_output=True,
-            text=True,
+def _focus_linux_window(target: LinuxTarget) -> None:
+    if shutil.which("xdotool"):
+        subprocess.run(
+            ["xdotool", "windowactivate", "--sync", target.window_id],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
         )
-    if result.returncode == 0:
-        print("[notify:linux] notify-send sent (click action: focus)")
+        return
+    if shutil.which("wmctrl"):
+        subprocess.run(
+            ["wmctrl", "-ia", target.window_id],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+
+
+def _notify_linux_worker(title: str, message: str, target: LinuxTarget | None, timeout_seconds: int) -> bool:
+    if not shutil.which("notify-send"):
+        return False
+
+    if target and (shutil.which("xdotool") or shutil.which("wmctrl")):
+        try:
+            result = _run(
+                [
+                    "notify-send",
+                    "--urgency=normal",
+                    "--action=focus=Focus",
+                    "--expire-time",
+                    str(timeout_seconds * 1000),
+                    title,
+                    message,
+                ],
+                timeout=timeout_seconds + 5,
+            )
+        except subprocess.TimeoutExpired:
+            return True
+
+        if result.returncode == 0 and result.stdout.strip() == "focus":
+            _focus_linux_window(target)
+        return result.returncode == 0
+
+    result = _run(["notify-send", "--urgency=normal", title, message], timeout=5)
     return result.returncode == 0
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Public API
-# ═══════════════════════════════════════════════════════════════════════
+def _notify_linux(title: str, message: str, no_wait: bool, timeout_seconds: int) -> bool:
+    target = _linux_frontmost_target()
+    if no_wait and target:
+        command = [
+            sys.executable,
+            os.path.abspath(__file__),
+            "--linux-worker",
+            "--title",
+            title,
+            "--message",
+            message,
+            "--focus-window",
+            target.window_id,
+            "--timeout",
+            str(timeout_seconds),
+        ]
+        if QUIET:
+            command.append("--quiet")
+        return _popen_detached(command)
 
-def send_notification(title: str, message: str, no_wait: bool = False) -> bool:
-    """Send a desktop notification. Returns True on success."""
+    ok = _notify_linux_worker(title, message, target, timeout_seconds)
+    if ok:
+        suffix = " (click action enabled)" if target else ""
+        _info(f"[notify:linux] notify-send sent{suffix}")
+    return ok
+
+
+# Public API ---------------------------------------------------------------
+
+def send_notification(title: str, message: str, no_wait: bool = False, timeout_seconds: int = 30) -> bool:
     if SYSTEM == "Windows":
-        return _notify_windows(title, message, no_wait=no_wait)
-    elif SYSTEM == "Darwin":
+        return _notify_windows(title, message, no_wait=no_wait, timeout_seconds=timeout_seconds)
+    if SYSTEM == "Darwin":
         return _notify_macos(title, message)
-    else:
-        return _notify_linux(title, message)
+    return _notify_linux(title, message, no_wait=no_wait, timeout_seconds=timeout_seconds)
 
 
-def main():
+def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Send a desktop notification with click-to-focus support."
+        description="Send a desktop notification with best-effort click-to-focus support."
     )
     parser.add_argument("title", nargs="?", help="Notification title")
     parser.add_argument("message", nargs="?", help="Notification body")
     parser.add_argument("--title", "-t", dest="title_opt", help="Notification title")
     parser.add_argument("--message", "-m", dest="message_opt", help="Notification body")
     parser.add_argument(
-        "--no-wait", "-n",
+        "--no-wait",
+        "-n",
         action="store_true",
-        help="Fire toast and exit immediately (no click listener). Use in hooks/automation."
+        help="Return immediately; spawn a short-lived click listener when the platform requires one.",
     )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=30,
+        help="Seconds to keep click listeners alive on platforms that need one.",
+    )
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Suppress informational stdout. Use for Codex hooks that reserve stdout for JSON.",
+    )
+    parser.add_argument(
+        "--best-effort",
+        action="store_true",
+        help="Return success even if the desktop notification backend is unavailable.",
+    )
+    parser.add_argument("--linux-worker", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--focus-window", help=argparse.SUPPRESS)
+    return parser.parse_args(argv)
 
-    args = parser.parse_args()
 
-    title = args.title_opt or args.title or "Claude Code"
+def main(argv: list[str] | None = None) -> int:
+    global QUIET
+
+    args = parse_args(list(sys.argv[1:] if argv is None else argv))
+    QUIET = args.quiet
+
+    title = args.title_opt or args.title or "Poseidon"
     message = args.message_opt or args.message or "Task completed."
+    timeout_seconds = max(1, args.timeout)
 
-    success = send_notification(title, message, no_wait=args.no_wait)
-    if not success:
-        print(
-            f"[notify] Failed to send notification on {SYSTEM}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    if args.linux_worker:
+        target = LinuxTarget(args.focus_window) if args.focus_window else None
+        success = _notify_linux_worker(title, message, target, timeout_seconds)
+    else:
+        success = send_notification(title, message, no_wait=args.no_wait, timeout_seconds=timeout_seconds)
+
+    if not success and not args.best_effort:
+        print(f"[notify] Failed to send notification on {SYSTEM}", file=sys.stderr)
+        return 1
+    if success and not args.linux_worker:
+        _info(f"[notify] sent via {SYSTEM}; command={_shell_join(sys.argv)}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,7 +1,6 @@
 ---
 name: debug
-description: Diagnostic debug workflow. Triggers when users provide logs, describe bug symptoms, report white screen / render anomalies / data mismatches, or other runtime issues. Use cases: log-based bug analysis, canvas rendering blank, data vs expected mismatch, audio/video playback issues, third-party library debugging.
-arguments: [<bug description or log path>]
+description: 'Diagnostic debug workflow. Triggers when users provide logs, describe bug symptoms, report white screen / render anomalies / data mismatches, or other runtime issues. Use cases: log-based bug analysis, canvas rendering blank, data vs expected mismatch, audio/video playback issues, third-party library debugging.'
 ---
 
 # Diagnostic Debug Workflow

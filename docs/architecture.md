@@ -196,6 +196,9 @@ Poseidon/
 通过 Claude Code 标准插件机制安装：
 
 ```bash
+# 生成 Claude 平台插件包
+python scripts/install.py --platform claude --scope repo --plugin ruankao --yes
+
 # 注册 Marketplace（首次）
 /plugin marketplace add poseidon https://github.com/HackNerd1/Poseidon
 
@@ -203,7 +206,7 @@ Poseidon/
 /plugin install ruankao@poseidon
 
 # 或本地路径安装
-/plugin install ./plugins/ruankao
+/plugin install ./.claude/generated/plugins/ruankao
 ```
 
 ---

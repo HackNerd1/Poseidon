@@ -1,7 +1,6 @@
 ---
 name: tts
 description: 论文文本转语音（TTS）。当用户要求将论文 Markdown 文档转为音频（mp3）时触发。默认使用免费 edge-tts 方案（微软神经语音），备选腾讯云 TTS。
-arguments: [<论文路径>]
 ---
 
 # 论文文本转语音（TTS）工作流

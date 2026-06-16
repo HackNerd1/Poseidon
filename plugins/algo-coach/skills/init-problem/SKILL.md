@@ -1,7 +1,6 @@
 ---
 name: init-problem
 description: 根据 LeetCode 题目链接，在本地初始化算法题文件并归类到对应题型目录。当用户提供 LeetCode URL，或要求"新建算法题"、"初始化题目"、"创建题目文件"时触发。适用场景：开始刷一道新题前自动创建模板文件。
-arguments: [<leetcode-url>]
 ---
 
 # 新建算法题工作流

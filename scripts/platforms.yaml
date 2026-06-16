@@ -1,0 +1,29 @@
+platforms:
+  codex:
+    implemented: true
+    user_skill_path: "~/.agents/skills"
+    project_skill_path: ".agents/skills"
+    plugin_manifest: ".codex-plugin/plugin.json"
+    marketplace_path: ".agents/plugins/marketplace.json"
+    hook_template: "hooks/codex/hooks.json"
+    hook_output: "hooks/hooks.json"
+    supports_plugin: true
+    install_mode: marketplace
+
+  claude:
+    implemented: true
+    user_skill_path: "~/.claude/skills"
+    project_skill_path: ".claude/skills"
+    plugin_manifest: ".claude-plugin/plugin.json"
+    marketplace_path: ".claude-plugin/marketplace.json"
+    hook_template: "hooks/claude/hooks.json"
+    hook_output: "hooks/hooks.json"
+    supports_plugin: true
+    install_mode: plugin
+
+  cursor:
+    implemented: false
+    project_skill_path: ".cursor/skills"
+    supports_plugin: false
+    adapter: mdc
+    install_mode: copy

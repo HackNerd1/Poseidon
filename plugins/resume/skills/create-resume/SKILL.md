@@ -1,7 +1,6 @@
 ---
 name: create-resume
 description: 根据用户提供的工作经历、项目经历等信息，生成符合《简历规范》的 Markdown 简历。支持 JSON/YAML 文件导入、对话式补充收集、JD 关键词匹配优化。当用户要求"创建简历"、"生成简历"、"写简历"、"更新简历"时触发。
-arguments: [<可选的 JSON/YAML 信息文件路径>]
 ---
 
 # 创建简历工作流
