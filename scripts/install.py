@@ -129,21 +129,17 @@ def validate_scope(platform: str, scope: str) -> None:
 def codex_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list[Operation]:
     validate_scope("codex", scope)
 
-    plugin_dirs = codex.select_plugin_dirs(root, plugin)
+    selected_plugin_dirs = codex.select_plugin_dirs(root, plugin)
+    all_plugin_dirs = codex.discover_plugin_dirs(root)
     operations: list[Operation] = []
-    marketplace = (
-        codex.generate_marketplace(root, codex.discover_plugin_dirs(root))
-        if plugin in (None, "", "all")
-        else codex.generate_marketplace_update(root, plugin_dirs)
-    )
     operations.append(
         Operation(
             "write",
             codex.marketplace_path(root),
-            marketplace,
+            codex.generate_marketplace(root, all_plugin_dirs),
         )
     )
-    for plugin_dir in plugin_dirs:
+    for plugin_dir in all_plugin_dirs:
         operations.append(
             Operation(
                 "sync",
@@ -159,7 +155,7 @@ def codex_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list
                 command=["codex", "plugin", "marketplace", "add", str(root), "--json"],
             )
         )
-        for plugin_dir in plugin_dirs:
+        for plugin_dir in selected_plugin_dirs:
             operations.append(
                 Operation(
                     "run",
@@ -179,15 +175,16 @@ def codex_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list
 def claude_plan(root: Path, scope: str, plugin: str) -> list[Operation]:
     validate_scope("claude", scope)
 
-    plugin_dirs = codex.select_plugin_dirs(root, plugin)
+    codex.select_plugin_dirs(root, plugin)
+    all_plugin_dirs = claude.discover_plugin_dirs(root)
     operations: list[Operation] = [
         Operation(
             "write",
             claude.marketplace_path(root),
-            claude.generate_marketplace(root, claude.discover_plugin_dirs(root)),
+            claude.generate_marketplace(root, all_plugin_dirs),
         )
     ]
-    for plugin_dir in plugin_dirs:
+    for plugin_dir in all_plugin_dirs:
         operations.append(
             Operation(
                 "sync-claude",
