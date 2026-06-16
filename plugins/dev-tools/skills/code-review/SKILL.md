@@ -1,7 +1,6 @@
 ---
 name: code-review
-description: Review staged/unstaged code changes, documentation, and architecture alignment. Triggers when users ask to "review code", "code review", "review staged", "review diff", "check changes", or provide a PR/patch for review. Covers correctness bugs, doc-code mismatch, architecture compliance, and web-informed best practices. Use cases: pre-commit review, architecture doc change validation, PR review, diff inspection.
-arguments: [<review scope — staged / unstaged / file path / PR URL / commit hash>]
+description: 'Review staged/unstaged code changes, documentation, and architecture alignment. Triggers when users ask to "review code", "code review", "review staged", "review diff", "check changes", or provide a PR/patch for review. Covers correctness bugs, doc-code mismatch, architecture compliance, and web-informed best practices. Use cases: pre-commit review, architecture doc change validation, PR review, diff inspection.'
 ---
 
 # Code Review Skill

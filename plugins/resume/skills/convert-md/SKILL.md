@@ -1,7 +1,6 @@
 ---
 name: convert-md
 description: 使用 Resumx 将 Markdown 简历转换为 PDF、HTML、DOCX、PNG 等多种格式。支持 30+ 内置风格选择，用户可指定输出格式和风格。当用户要求"转换简历"、"导出 PDF"、"md 转 pdf"、"生成简历 PDF"、"换个风格"时触发。
-arguments: [<可选的 Markdown 文件路径>]
 ---
 
 # Markdown 简历格式转换工作流
