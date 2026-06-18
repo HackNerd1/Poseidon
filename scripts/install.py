@@ -172,10 +172,10 @@ def codex_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list
     return operations
 
 
-def claude_plan(root: Path, scope: str, plugin: str) -> list[Operation]:
+def claude_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list[Operation]:
     validate_scope("claude", scope)
 
-    codex.select_plugin_dirs(root, plugin)
+    selected_plugin_dirs = codex.select_plugin_dirs(root, plugin)
     all_plugin_dirs = claude.discover_plugin_dirs(root)
     operations: list[Operation] = [
         Operation(
@@ -192,6 +192,29 @@ def claude_plan(root: Path, scope: str, plugin: str) -> list[Operation]:
                 source=plugin_dir,
             )
         )
+    if not generate_only:
+        operations.append(
+            Operation(
+                "run",
+                None,
+                command=["claude", "plugin", "marketplace", "add", str(root)],
+            )
+        )
+        for plugin_dir in selected_plugin_dirs:
+            operations.append(
+                Operation(
+                    "run",
+                    None,
+                    command=[
+                        "claude",
+                        "plugin",
+                        "install",
+                        f"{plugin_dir.name}@{codex.marketplace_name(root)}",
+                        "--scope",
+                        "project" if scope == "repo" else scope,
+                    ],
+                )
+            )
     return operations
 
 
@@ -207,7 +230,7 @@ def build_plan(
         if platform == "codex":
             operations.extend(codex_plan(root, scope, plugin, generate_only))
         elif platform == "claude":
-            operations.extend(claude_plan(root, scope, plugin))
+            operations.extend(claude_plan(root, scope, plugin, generate_only))
     return operations
 
 
