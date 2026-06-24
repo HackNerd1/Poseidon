@@ -2,6 +2,32 @@
 
 Use this reference when a review needs module-level architecture judgment rather than only line-level correctness.
 
+## Dependency Census Workflow
+
+When the change touches a shared module, public API, planner, runtime, registry, schema, hook, or command dispatcher, do a dependency census before concluding on blast radius.
+
+Minimum questions:
+- Who depends on this module?
+- What does this module depend on?
+- Which of those dependents did you actually inspect?
+- Which tests cover those flows?
+
+Preferred approach:
+1. Run `scripts/dependency_census.py <module-path>` to get a first-pass census
+2. Use repository search to verify imports, references, registrations, and call sites that look high-risk
+3. Separate inbound dependents from outbound dependencies
+4. Identify which inbound dependents are high-risk entry points
+5. Inspect tests for the changed module and for the most important dependents
+6. Report whether the census is exact, approximate, or sample-based
+
+Output a short summary like:
+- Module: `path/to/module`
+- Fan-in: `N exact` or `approx N` or `sampled callers: A, B, C`
+- Fan-out: `N exact` or `approx N`
+- Inspected dependents: `...`
+- Tests inspected: `...`
+- Blind spots: `...`
+
 ## Core Signals
 
 ### Cohesion
@@ -37,6 +63,11 @@ Suggested responses:
 - Split responsibilities
 - Hide unstable details behind an adapter or interface
 
+Do not stop at a qualitative statement like "high fan-out". Prefer one of:
+- Exact count from repository search
+- Approximate count with disclosed uncertainty
+- Named sample of the outbound dependencies actually inspected
+
 ### Fan-in
 
 Ask how many callers or dependents are affected by the change.
@@ -56,6 +87,11 @@ Flag:
 - Semantic changes
 - Default-value changes
 - Error-behavior changes
+
+Do not stop at "this is a high fan-in module". Prefer one of:
+- Exact dependent list
+- Approximate dependent count plus named critical callers
+- Sample-based caller list with explicit blind spots
 
 ### Stability Heuristic
 
@@ -92,6 +128,12 @@ Then inspect:
 - Documentation
 - Adjacent modules connected by imports or shared types
 
+When time is limited, prioritize:
+1. Entry points and user-triggered flows
+2. Shared command/runtime/planner layers
+3. Test files that should pin behavior
+4. Docs or schemas that define the contract
+
 ## Architecture Finding Labels
 
 For architecture findings, explicitly name one or more trigger signals:
@@ -103,3 +145,7 @@ For architecture findings, explicitly name one or more trigger signals:
 - `Boundary violation`
 - `Duplicate functionality`
 - `Over-engineering`
+
+## Review Completeness Rule
+
+A shared-module review is incomplete if it comments on blast radius, compatibility, or missing tests without stating what dependency census was actually performed.

@@ -33,6 +33,13 @@ You will conduct a structured code review covering correctness, architecture ali
   - Trigger signal for architecture findings
   - Why it matters
   - Concrete suggestion
+- For shared modules, public APIs, planners, runtimes, registries, schemas, hooks, and command dispatch layers, also include a short architecture coverage summary:
+  - Module reviewed
+  - Inbound dependents inspected
+  - Outbound dependencies inspected
+  - Whether counts are exact, approximate, or sample-based
+  - Test coverage checked
+  - Remaining blind spots
 - If no findings are discovered, say so explicitly and mention residual risks or testing gaps
 - Do not edit code until the user confirms what to fix
 
@@ -41,6 +48,7 @@ You will conduct a structured code review covering correctness, architecture ali
 - For module-level architecture review, load `references/module-review-guide.md`
 - For severity assignment and finding wording, load `references/findings-guide.md`
 - For external review heuristics or unfamiliar design tradeoffs, load `references/public-review-heuristics.md`
+- For dependency census, run `scripts/dependency_census.py` before manual caller sampling when the change touches a shared module or architectural seam
 - Only load the reference files needed for the current review
 
 ## Workflow
@@ -65,6 +73,15 @@ Before reviewing, also load enough surrounding context to avoid diff-only mistak
 1. Read the full changed file, not only the hunk
 2. Read directly imported / referenced neighbors when the change affects interfaces, shared types, utilities, or architectural boundaries
 3. Check whether the change touches a public API, shared module, or high-fan-in utility; if yes, widen the review scope to callers/tests/docs
+4. For shared modules or architectural seams, perform a dependency census using repository search:
+   - Who depends on this module?
+   - What does this module depend on?
+   - Which dependents were actually inspected?
+   - Which tests cover those paths?
+5. Explicitly state whether fan-in / fan-out reasoning is:
+   - **Exact** — repo search produced a concrete list
+   - **Approximate** — partial but broad search
+   - **Sample-based** — only representative callers were inspected
 
 ### Step 2: Classify Changes
 
@@ -161,6 +178,7 @@ Each finding must include:
 If you searched the web during review, cite the URLs that informed your conclusions.
 
 Load `references/findings-guide.md` to format findings and assign severity consistently.
+For shared-module or architecture-heavy reviews, include the dependency census summary from `references/module-review-guide.md`.
 
 ### Step 5: Wait for User Decision
 
@@ -222,6 +240,7 @@ After all fixes are verified and the checklist/tests pass, ask:
 - **User asks to review a PR** — use `gh pr view <url>` and `gh pr diff <url>` to fetch the PR content
 - **Pure refactor claims** — verify the claim by checking whether behavior, signatures, defaults, side effects, or error semantics changed; do not trust the label
 - **Shared-module change** — if the changed file has high fan-in, require callers/tests/docs compatibility checks even when the diff is small
+- **Shared-module review without dependency census** — treat this as incomplete review; either add the census or explicitly disclose that only sample-based caller inspection was performed
 - **Large formatting + logic change mixed together** — ask to split if reviewability materially suffers
 
 ## Limitations

@@ -12,6 +12,8 @@ Present findings in this order:
 
 If no findings are discovered, say so explicitly and mention residual risks or testing gaps.
 
+For architecture-heavy or shared-module reviews, add a short `Architecture Coverage` block before or after findings.
+
 ## Required Fields
 
 Each finding should include:
@@ -20,6 +22,32 @@ Each finding should include:
 - Trigger signal for architecture findings
 - Why it matters
 - Concrete suggestion
+
+## Architecture Coverage Block
+
+Use this block when the review discusses fan-in, fan-out, blast radius, shared modules, planners, runtimes, registries, or public APIs.
+
+Include:
+- Module reviewed
+- Fan-in status: exact / approximate / sample-based
+- Fan-out status: exact / approximate / sample-based
+- Inbound dependents inspected
+- Outbound dependencies inspected
+- Tests inspected
+- Blind spots or unreviewed callers
+
+Example:
+
+```md
+## Architecture Coverage
+- Module: `src/runtime/useTimelineCommandRuntime.ts`
+- Fan-in: approximate, 5 callers found via repo search
+- Fan-out: exact, 7 direct imports
+- Inbound dependents inspected: `useTimelineResourceDrop`, `useTimelineClipInteractions`, `useTimelineCommandActions`
+- Outbound dependencies inspected: `timelineCommands/assembly`, `history`, `selection`
+- Tests inspected: `useTimelineCommandRuntime.test.ts`, `timelineCommands.test.ts`
+- Blind spots: no direct test found for `planClipPasteAssembly`
+```
 
 ## Category Tags
 
@@ -67,3 +95,4 @@ Use when the issue is non-blocking but likely worth improving for:
 - Prefer one strong issue over many weak nits
 - For design comments, explain whether the problem is cohesion, coupling, fan-in, fan-out, cycle creation, boundary violation, or over-engineering
 - When a change mixes behavior and broad formatting churn, call out the reviewability risk explicitly
+- Distinguish clearly between exact dependency counts and sampled caller inspection; do not imply precision you did not establish
