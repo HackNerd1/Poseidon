@@ -7,7 +7,49 @@ description: 'Review staged/unstaged code changes, documentation, and architectu
 
 ## Overview
 
-You will conduct a structured code review covering correctness, architecture alignment, and documentation consistency. Core principle: **verify against ground truth — read the actual code, search the web for standards, and check architecture docs before forming conclusions**.
+You will conduct a structured code review covering correctness, architecture alignment, documentation consistency, and module quality. Core principle: **verify against ground truth — read the actual code, inspect the surrounding modules, search the web for standards when needed, and check architecture docs before forming conclusions**.
+
+## Core Responsibilities
+
+1. Determine the correct review scope from user intent, working tree state, or PR target.
+2. Review changed code and documents against repository architecture, module boundaries, and actual implementation.
+3. Identify correctness, architecture, testing, maintainability, and reviewability risks with explicit severity.
+4. Explain architecture findings in module terms such as cohesion, coupling, fan-in, fan-out, cycles, and boundary violations.
+5. Help the user fix approved findings and verify the result with tests or a concrete manual checklist.
+
+## Input Requirements
+
+- Accept one of: staged diff, unstaged diff, specific file path, commit hash, branch, or PR URL
+- If the user does not specify scope, infer it from `git diff --cached`, `git diff`, or recent commits in that order
+- Read the full changed file before concluding on any finding
+- Expand context to adjacent modules, callers, tests, and docs when the change touches a public API, shared module, interface, schema, or architectural seam
+
+## Output Format
+
+- Findings first, ordered by severity
+- Each finding includes:
+  - Category tag
+  - File path and line number when available
+  - Trigger signal for architecture findings
+  - Why it matters
+  - Concrete suggestion
+- For shared modules, public APIs, planners, runtimes, registries, schemas, hooks, and command dispatch layers, also include a short architecture coverage summary:
+  - Module reviewed
+  - Inbound dependents inspected
+  - Outbound dependencies inspected
+  - Whether counts are exact, approximate, or sample-based
+  - Test coverage checked
+  - Remaining blind spots
+- If no findings are discovered, say so explicitly and mention residual risks or testing gaps
+- Do not edit code until the user confirms what to fix
+
+## Reference Loading Rules
+
+- For module-level architecture review, load `references/module-review-guide.md`
+- For severity assignment and finding wording, load `references/findings-guide.md`
+- For external review heuristics or unfamiliar design tradeoffs, load `references/public-review-heuristics.md`
+- For dependency census, run `scripts/dependency_census.py` before manual caller sampling when the change touches a shared module or architectural seam
+- Only load the reference files needed for the current review
 
 ## Workflow
 
@@ -25,6 +67,21 @@ If scope is ambiguous, ask:
 > What should I review? Options: staged changes, unstaged changes, a specific file, or a commit/PR?
 
 Once determined, load the full diff with `git diff` or `git diff --cached` as appropriate. For PRs, use `gh pr view` or `gh pr diff`.
+
+Before reviewing, also load enough surrounding context to avoid diff-only mistakes:
+
+1. Read the full changed file, not only the hunk
+2. Read directly imported / referenced neighbors when the change affects interfaces, shared types, utilities, or architectural boundaries
+3. Check whether the change touches a public API, shared module, or high-fan-in utility; if yes, widen the review scope to callers/tests/docs
+4. For shared modules or architectural seams, perform a dependency census using repository search:
+   - Who depends on this module?
+   - What does this module depend on?
+   - Which dependents were actually inspected?
+   - Which tests cover those paths?
+5. Explicitly state whether fan-in / fan-out reasoning is:
+   - **Exact** — repo search produced a concrete list
+   - **Approximate** — partial but broad search
+   - **Sample-based** — only representative callers were inspected
 
 ### Step 2: Classify Changes
 
@@ -59,12 +116,14 @@ For each changed source file:
    - The project's `ARCHITECTURE.md` or `docs/architecture.md`
    - Module boundaries and dependency direction
    - Naming conventions and code organization patterns
-2. **Correctness** — look for:
+2. **Module quality** — review the change as a module design problem, not only a line-level diff
+   - Load `references/module-review-guide.md` when assessing cohesion, coupling, fan-in, fan-out, stability, dependency direction, or architecture erosion
+3. **Correctness** — look for:
    - Null / undefined access, missing error handling at system boundaries
    - Race conditions (shared mutable state, missing awaits)
    - Resource leaks (unclosed handles, listeners, timers)
    - Logic errors (inverted conditions, off-by-one, wrong operator)
-3. **Complexity assessment** — rate the change:
+4. **Complexity and over-engineering assessment** — rate the change:
 
    | Level | Criteria | Action |
    |-------|----------|--------|
@@ -73,7 +132,13 @@ For each changed source file:
    | **Low** | Typo fix, logging, constant update, <10 line change, comment edit | No test prompt needed |
 
    Additionally, check if the changed code is in a **high-traffic path** (frequently called function, shared utility, core module). If so, upgrade the complexity one level.
-4. **Web-informed review** — when you encounter an unfamiliar pattern, library API, or security-sensitive code (auth, crypto, permissions), **search the web** for current best practices before concluding. Include search results as context in your findings.
+   - Also flag speculative abstractions, premature generalization, and generic frameworks added without an immediate need
+   - Prefer a smaller concrete design over a reusable-looking design that adds indirection without current value
+5. **Tests and blast radius** — review tests in proportion to risk:
+   - If fan-in is high, shared behavior changed, or a boundary contract changed, expect tests beyond the local function
+   - Check whether unit tests cover edge cases and whether integration tests cover the boundary that actually changed
+   - If behavior changed but tests only assert implementation details, flag the gap
+6. **Web-informed review** — when you encounter an unfamiliar pattern, library API, security-sensitive code, or design tradeoff, **search the web** for current best practices before concluding. Include search results as context in your findings.
 
 #### 3C. Config / Infra Changes
 
@@ -111,6 +176,9 @@ Each finding must include:
 - **Suggestion** — one sentence on what to change
 
 If you searched the web during review, cite the URLs that informed your conclusions.
+
+Load `references/findings-guide.md` to format findings and assign severity consistently.
+For shared-module or architecture-heavy reviews, include the dependency census summary from `references/module-review-guide.md`.
 
 ### Step 5: Wait for User Decision
 
@@ -152,10 +220,15 @@ After all fixes are verified and the checklist/tests pass, ask:
 1. **Read before judging** — always read the actual files referenced in the diff; never guess from filenames alone
 2. **Search when uncertain** — if a pattern, library, or standard is unfamiliar, search the web before drawing conclusions
 3. **Architecture doc is authoritative** — `ARCHITECTURE.md` / `docs/architecture.md` is the ground truth for design compliance
-4. **Severity, not quantity** — a single well-explained critical finding is better than ten nitpicks
-5. **No unsolicited edits** — present findings first, fix only after user confirmation
-6. **Test before done** — always attempt to run existing tests after applying fixes
-7. **Commit only on request** — never commit without user approval
+4. **Review in system context** — inspect the whole file and adjacent modules whenever the diff changes an interface, shared type, or architectural seam
+5. **Design before style** — prioritize design, correctness, tests, and maintainability above formatting nits
+6. **Prefer code health improvement over perfectionism** — approve when the change clearly improves the system and remaining comments are non-blocking
+7. **Severity, not quantity** — a single well-explained critical finding is better than ten nitpicks
+8. **Comment on coupling explicitly** — do not stop at "this feels wrong"; explain whether the issue is cohesion, coupling, fan-in risk, fan-out bloat, cycle creation, or boundary violation
+9. **Separate functional and non-functional churn** — if a change mixes behavior changes with broad reformatting/renaming/moves, flag reviewability and rollback risk
+10. **No unsolicited edits** — present findings first, fix only after user confirmation
+11. **Test before done** — always attempt to run existing tests after applying fixes
+12. **Commit only on request** — never commit without user approval
 
 ## Edge Cases
 
@@ -165,6 +238,10 @@ After all fixes are verified and the checklist/tests pass, ask:
 - **Very large diff (>500 lines)** — summarize by module/theme rather than listing every finding individually; offer to deep-dive on specific files
 - **No ARCHITECTURE.md exists** — skip architecture-alignment checks; note this as a suggestion to create one
 - **User asks to review a PR** — use `gh pr view <url>` and `gh pr diff <url>` to fetch the PR content
+- **Pure refactor claims** — verify the claim by checking whether behavior, signatures, defaults, side effects, or error semantics changed; do not trust the label
+- **Shared-module change** — if the changed file has high fan-in, require callers/tests/docs compatibility checks even when the diff is small
+- **Shared-module review without dependency census** — treat this as incomplete review; either add the census or explicitly disclose that only sample-based caller inspection was performed
+- **Large formatting + logic change mixed together** — ask to split if reviewability materially suffers
 
 ## Limitations
 
@@ -172,3 +249,7 @@ After all fixes are verified and the checklist/tests pass, ask:
 - Not a replacement for security audit — can flag obvious secrets and injection patterns but not a full threat model
 - Not a replacement for performance profiling — can flag obvious N+1 queries or O(n²) patterns but not micro-benchmarks
 - Cannot review compiled binaries, images, or other non-text assets
+
+## Reference Notes
+
+- Load `references/public-review-heuristics.md` only when repo-local guidance is insufficient or external standards materially affect the review
