@@ -1,6 +1,6 @@
 ---
 name: plan
-description: '从需求到实施的渐进式计划工作流。当用户提供需求描述/文档链接要求制定实施计划、澄清需求、拆分任务时触发。适用场景：需求澄清与评分、需求文档生成、总体计划制定、详细任务拆分、分批派发子 agent 实施。支持本地文件和飞书 CLI 两种文档存储方式。触发短语："帮我做计划"、"plan this"、"分析需求"、"拆分任务"、"制定实施方案"、"clarify requirements"、"create implementation plan"。'
+description: '从需求到实施的渐进式计划工作流。当用户提供需求描述/文档链接要求制定实施计划、澄清需求、拆分任务时触发。适用场景：需求澄清与评分、需求文档生成、总体计划制定、详细任务拆分、分批派发子 agent 实施。支持本地 Markdown、飞书 CLI、Notion CLI 三种文档存储方式。触发短语："帮我做计划"、"plan this"、"分析需求"、"拆分任务"、"制定实施方案"、"clarify requirements"、"create implementation plan"。'
 ---
 
 # Plan Skill — 从需求到实施的渐进式计划工作流
@@ -15,7 +15,7 @@ description: '从需求到实施的渐进式计划工作流。当用户提供需
 
 用户需提供：
 1. **需求描述**（必需）：文档链接、自然语言描述、或本地文件路径
-2. **文档存储方式**（可选，默认 `local`）：`local`（本地 Markdown）或 `feishu`（飞书 CLI）
+2. **文档存储方式**（可选，默认 `local`）：`local`（本地 Markdown）、`feishu`（飞书 CLI）或 `notion`（Notion CLI）
 3. **文档路径**（可选）：默认 `docs/requirements/`
 
 ## 工作流
@@ -25,7 +25,10 @@ description: '从需求到实施的渐进式计划工作流。当用户提供需
 1. **需求描述**是否提供？未提供 → 提示：
    > 请提供需求信息：文档链接、自然语言描述、或本地文件路径。
 
-2. **存储方式**：未声明 → 默认 `local`，告知用户。如果用户选择 `feishu` → Read `references/feishu-workflow.md` 第二、五章，验证 CLI 可用（`which feishu`），初始化 `.Poseidon/feishu/` 目录和 `doc-map.json`。
+2. **存储方式**：未声明 → 默认 `local`，告知用户。
+   - 用户选择 `feishu` → Read `references/feishu-workflow.md` 第二、五章，验证 CLI 可用（`which feishu`），初始化 `.Poseidon/feishu/` 目录和 `doc-map.json`
+   - 用户选择 `notion` → Read `references/notion-workflow.md` 第一、二、五章，验证 CLI 可用（`which ntn`），初始化 `.Poseidon/notion/` 目录和 `doc-map.json`
+     - 用户必须显式提供 Notion 页面或 database 的 URL / ID；未提供则提示补充
 
 3. **存储路径**：确保目标目录存在（`local` 则 `mkdir -p docs/requirements/`）。
 
@@ -63,6 +66,7 @@ Read `references/requirement-clarification-guide.md`，获取：
 
 **输出**（local）：`docs/requirements/<feature-slug>-clarification.md`
 **输出**（feishu）：先写入 `.Poseidon/feishu/<slug>-clarification.md`，再按 `feishu-workflow.md` 三.1 节推送至飞书。
+**输出**（notion）：先写入 `.Poseidon/notion/<slug>-clarification.md`，再按 `notion-workflow.md` 第四章推送至 Notion。
 
 告知用户评分和记录路径，确认后进入 Step 2。
 
@@ -88,6 +92,7 @@ Read `references/requirement-doc-template.md`，按模板结构填充：
 
 **输出**（local）：`docs/requirements/<feature-slug>.md`
 **输出**（feishu）：先写入 `.Poseidon/feishu/<slug>-requirement.md`，再推送飞书，更新 `doc-map.json`。
+**输出**（notion）：先写入 `.Poseidon/notion/<slug>-requirement.md`，再推送 Notion，更新 `doc-map.json`。
 
 确认后进入 Step 3。
 
@@ -129,6 +134,7 @@ Agent tool:
 
 **输出**（local）：`docs/requirements/<feature-slug>-overall-plan.md`
 **输出**（feishu）：先写入 `.Poseidon/feishu/<slug>-overall-plan.md`，再推送飞书。
+**输出**（notion）：先写入 `.Poseidon/notion/<slug>-overall-plan.md`，再推送 Notion。
 
 完成后告知用户阶段数量，确认后进入 Step 4。
 
@@ -176,6 +182,7 @@ Agent tool:
 
 **输出**（local）：`docs/requirements/<feature-slug>-detailed-plan-p<n>.md`
 **输出**（feishu）：先写入 `.Poseidon/feishu/<slug>-detailed-plan-p<n>.md`，再推送飞书。
+**输出**（notion）：先写入 `.Poseidon/notion/<slug>-detailed-plan-p<n>.md`，再推送 Notion。
 
 完成后告知用户任务数、依赖关系和并行可能性，进入 Step 5。
 
@@ -220,6 +227,12 @@ Read `references/code-execution-standards.md` 第三章，获取 Code Agent Prom
 2. 更新总体计划文档：阶段内全部完成则标记阶段完成
 3. 更新 TODO：TaskUpdate 标记 `completed`
 
+如果存储方式为 `notion`，且当前文档需要更新已有页面内容，按 `notion-workflow.md` 三.3 / 四.2 节执行：
+1. 优先保留本地 Markdown 为事实源
+2. 用户必须显式提供目标页面 URL / ID
+3. 用 `ntn pages edit` 覆盖页面正文
+4. 必要时回读校验
+
 子 agent 失败时按 `dispatch-strategies.md` 3.4 节处理（重试/调整/人工介入）。
 
 #### 6.2 询问是否继续
@@ -259,6 +272,9 @@ Read `references/code-execution-standards.md` 第三章，获取 Code Agent Prom
 8. **子 agent 不自动派发**：必须用户确认
 9. **进度持久化**：所有文档和 TODO 写入文件系统，支持中断恢复
 10. **每步确认**：Step 1→2、Step 3→4、Step 5 派发、Step 6 循环均需确认
+11. **远端文档本地优先**：`feishu` / `notion` 都必须先写本地副本，再同步到云端
+12. **Notion 显式目标**：Notion 模式下必须由用户显式提供页面或 database 的 URL / ID
+13. **Notion 只负责内容**：Notion workflow 默认只负责文档内容创建、更新、读取，不负责模板、项目结构或归档策略
 
 ## 边界情况
 
@@ -267,6 +283,10 @@ Read `references/code-execution-standards.md` 第三章，获取 Code Agent Prom
 - **架构约束与需求冲突** → 明确指出冲突，让用户决策
 - **飞书 CLI 不可用** → 降级为 local，告知用户。详见 `feishu-workflow.md` 第五章
 - **飞书文档冲突** → 按 `feishu-workflow.md` 第六章处理（拉取 diff → 用户选择）
+- **Notion CLI 不可用** → 降级为 local，告知用户。详见 `notion-workflow.md` 第五章
+- **Notion 未提供 URL / ID** → 直接提示用户补充，不自动猜测写入位置
+- **Notion 给的是 database** → 仅在用户明确要求时在该 database 下创建页面；不自动推断标题字段名
+- **Notion 页面需要大幅改写** → 默认覆盖正文内容；是否保留旧版本由用户自己决定
 - **子 agent 失败** → 按 dispatch-strategies.md 3.4 处理
 - **已有进行中计划** → 检查已有 TODO 和文档，询问继续还是新建
 - **依赖未完成就派发** → 拒绝，提示完成前置任务
@@ -274,9 +294,10 @@ Read `references/code-execution-standards.md` 第三章，获取 Code Agent Prom
 
 ## 限制
 
-- 仅支持 local 和 feishu 两种存储（Notion API 待后续支持）
+- 支持 `local` / `feishu` / `notion` 三种存储，但 `notion` 模式默认只覆盖文档内容，不保证复刻 UI 模板或项目结构
 - 需求澄清最多 10 轮
 - 子 agent 实施质量取决于 agent 对代码库的理解
 - 不替代正式 PRD 流程或项目管理工具
 - 伪代码仅描述逻辑，不保证可直接编译/运行
 - 飞书文档富文本（表格、图片）在 CLI 读写中可能丢失格式
+- Notion database 创建页面时可能需要用户显式提供标题字段信息；字段名未知时不应盲写
