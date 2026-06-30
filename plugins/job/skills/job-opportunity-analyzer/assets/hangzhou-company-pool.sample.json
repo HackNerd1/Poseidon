@@ -1,0 +1,337 @@
+{
+  "schema_version": "v1.0",
+  "city": "hangzhou",
+  "generated_at": "2026-06-30",
+  "companies": [
+    {
+      "company_id": "hqtrip",
+      "name": "杭州海圈旅行科技有限公司",
+      "city": "hangzhou",
+      "tier": "T3",
+      "official_website": "https://www.hqtrip.example.com",
+      "career_url": "https://jobs.hqtrip.example.com",
+      "known_business": [
+        "travel-saas",
+        "cross-border-booking"
+      ],
+      "employee_count": null,
+      "avg_rating": null,
+      "tags": [
+        "travel",
+        "saas",
+        "frontend-demand"
+      ],
+      "notes": "样例公司，用于展示杭州本地稳妥型前端机会的记录方式。",
+      "include_reason": "来自杭州本地产业观察名单，且官网长期招聘前端与全栈岗位。",
+      "source_refs": [
+        {
+          "source_id": "src-hz-001",
+          "source_type": "industry_list",
+          "label": "杭州数字经济企业观察名单",
+          "url": "https://example.com/hangzhou-digital-economy-list",
+          "observed_at": "2026-06-20",
+          "note": "用于证明公司属于本地重点数字经济候选池。"
+        },
+        {
+          "source_id": "src-hz-002",
+          "source_type": "official",
+          "label": "海圈旅行官网招聘页",
+          "url": "https://jobs.hqtrip.example.com",
+          "observed_at": "2026-06-28",
+          "note": "用于确认公司仍在公开招聘技术岗位。"
+        }
+      ],
+      "last_verified": "2026-06-28"
+    },
+    {
+      "company_id": "lakeflow-robotics",
+      "name": "杭州澜流机器人科技有限公司",
+      "city": "hangzhou",
+      "tier": "T2",
+      "official_website": "https://www.lakeflow-robotics.example.com",
+      "career_url": "https://www.lakeflow-robotics.example.com/careers",
+      "known_business": [
+        "industrial-robotics",
+        "digital-twin"
+      ],
+      "employee_count": 460,
+      "avg_rating": 4.1,
+      "tags": [
+        "robotics",
+        "visualization",
+        "growth-stage"
+      ],
+      "notes": "样例公司，用于展示成长性较强且有官方岗位支撑的冲刺型机会。",
+      "include_reason": "同时出现在成长型科技企业榜单和官方招聘页，适合作为高成长前端机会样本。",
+      "source_refs": [
+        {
+          "source_id": "src-hz-003",
+          "source_type": "industry_list",
+          "label": "2026 杭州高成长智能制造企业榜单",
+          "url": "https://example.com/hangzhou-smart-manufacturing-growth-2026",
+          "observed_at": "2026-06-18",
+          "note": "用于解释公司进入候选池的成长性原因。"
+        },
+        {
+          "source_id": "src-hz-004",
+          "source_type": "official",
+          "label": "澜流机器人官网招聘页",
+          "url": "https://www.lakeflow-robotics.example.com/careers",
+          "observed_at": "2026-06-29",
+          "note": "用于确认公司存在与前端可视化相关的公开岗位。"
+        }
+      ],
+      "last_verified": "2026-06-29"
+    },
+    {
+      "company_id": "qianmu-ai",
+      "name": "杭州千目智能科技有限公司",
+      "city": "hangzhou",
+      "tier": "T2",
+      "official_website": "https://www.qianmu-ai.example.com",
+      "career_url": "https://www.qianmu-ai.example.com/careers",
+      "known_business": [
+        "industrial-ai",
+        "computer-vision"
+      ],
+      "employee_count": 320,
+      "avg_rating": 3.9,
+      "tags": [
+        "ai",
+        "industrial-tech",
+        "growth-stage"
+      ],
+      "notes": "样例公司，用于展示信息不完整但成长性值得跟踪的候选记录。",
+      "include_reason": "创投榜单与公开招聘平台同时出现，适合作为成长型技术公司样本。",
+      "source_refs": [
+        {
+          "source_id": "src-hz-005",
+          "source_type": "industry_list",
+          "label": "2026 杭州高成长科技企业榜单",
+          "url": "https://example.com/hangzhou-growth-tech-2026",
+          "observed_at": "2026-06-18",
+          "note": "用于解释公司进入候选池的成长性原因。"
+        },
+        {
+          "source_id": "src-hz-006",
+          "source_type": "job_board",
+          "label": "公开招聘平台上的前端工程师职位页",
+          "url": "https://example.com/jobs/qianmu-ai-frontend",
+          "observed_at": "2026-06-27",
+          "note": "用于确认公司存在与目标方向相关的公开岗位。"
+        }
+      ],
+      "last_verified": "2026-06-27"
+    }
+  ],
+  "job_opportunities": [
+    {
+      "opportunity_id": "opp-hz-001",
+      "company_id": "hqtrip",
+      "job_title": "Frontend Engineer",
+      "tech_stack": [
+        "react",
+        "typescript",
+        "micro-frontend"
+      ],
+      "experience_required": "3年以上 Web 前端开发经验",
+      "salary_range": "20-30K·14薪",
+      "job_url": "https://jobs.hqtrip.example.com/frontend-engineer",
+      "source_type": "official",
+      "match_reason": "岗位方向与前端关键词直接对齐，且业务场景偏平台化，适合需要 React + TypeScript 稳定需求的候选人。",
+      "salary_match": "match",
+      "risk_flags": [],
+      "source_refs": [
+        {
+          "source_id": "src-hz-007",
+          "source_type": "official",
+          "label": "海圈旅行前端工程师职位页",
+          "url": "https://jobs.hqtrip.example.com/frontend-engineer",
+          "observed_at": "2026-06-28",
+          "note": "用于提取岗位名称、经验和薪资原文。"
+        },
+        {
+          "source_id": "src-hz-008",
+          "source_type": "school_board",
+          "label": "浙江大学就业网杭州数字企业专场",
+          "url": "https://example.com/school-board/hqtrip-campus-frontend",
+          "observed_at": "2026-06-24",
+          "note": "用于补充公司在本地高校招聘场景的活跃度。"
+        }
+      ]
+    },
+    {
+      "opportunity_id": "opp-hz-002",
+      "company_id": "lakeflow-robotics",
+      "job_title": "Senior Frontend Visualization Engineer",
+      "tech_stack": [
+        "react",
+        "typescript",
+        "threejs",
+        "data-visualization"
+      ],
+      "experience_required": "4-6年，具备复杂工业可视化项目经验优先",
+      "salary_range": "28-38K·16薪",
+      "job_url": "https://www.lakeflow-robotics.example.com/careers/frontend-visualization",
+      "source_type": "official",
+      "match_reason": "岗位与前端可视化方向高度相关，技术栈和工业数字孪生业务都能支撑更强的成长性叙事。",
+      "salary_match": "partial",
+      "risk_flags": [
+        "experience_unaligned"
+      ],
+      "source_refs": [
+        {
+          "source_id": "src-hz-009",
+          "source_type": "official",
+          "label": "澜流机器人高级前端可视化工程师职位页",
+          "url": "https://www.lakeflow-robotics.example.com/careers/frontend-visualization",
+          "observed_at": "2026-06-29",
+          "note": "用于提取岗位职责、技术栈、经验要求和薪资原文。"
+        },
+        {
+          "source_id": "src-hz-010",
+          "source_type": "news",
+          "label": "智能制造行业报道中的澜流机器人扩张信息",
+          "url": "https://example.com/news/lakeflow-robotics-expansion",
+          "observed_at": "2026-06-22",
+          "note": "用于补充团队扩张和业务增长信号。"
+        }
+      ]
+    },
+    {
+      "opportunity_id": "opp-hz-003",
+      "company_id": "qianmu-ai",
+      "job_title": "Senior Frontend Engineer",
+      "tech_stack": [
+        "react",
+        "threejs",
+        "data-visualization"
+      ],
+      "experience_required": "5年及以上，具备复杂可视化项目经验优先",
+      "salary_range": "面议",
+      "job_url": "https://example.com/jobs/qianmu-ai-frontend",
+      "source_type": "job_board",
+      "match_reason": "岗位与前端方向相关，且行业场景对可视化和工程能力要求较高，但当前公开证据主要来自第三方平台。",
+      "salary_match": "unaligned",
+      "risk_flags": [
+        "salary_unaligned",
+        "third_party_only",
+        "insufficient_sentiment_samples"
+      ],
+      "source_refs": [
+        {
+          "source_id": "src-hz-006",
+          "source_type": "job_board",
+          "label": "公开招聘平台上的前端工程师职位页",
+          "url": "https://example.com/jobs/qianmu-ai-frontend",
+          "observed_at": "2026-06-27",
+          "note": "用于提取岗位方向和原始薪资描述。"
+        }
+      ]
+    }
+  ],
+  "company_sentiments": [
+    {
+      "sentiment_id": "sent-hz-001",
+      "company_id": "hqtrip",
+      "community_source": "v2ex",
+      "news_source": "36kr",
+      "pros": [
+        "旅游 SaaS 方向相对聚焦",
+        "公开招聘页信息较完整"
+      ],
+      "cons": [
+        "团队规模未知",
+        "社区样本量有限"
+      ],
+      "summary": "公开信息显示公司业务方向明确，但团队规模和岗位稳定性仍需在面试前补查。",
+      "observed_at": "2026-06-28",
+      "source_refs": [
+        {
+          "source_id": "src-hz-011",
+          "source_type": "community",
+          "label": "V2EX 杭州公司讨论串",
+          "url": "https://example.com/community/hqtrip-discussion",
+          "observed_at": "2026-06-25",
+          "note": "用于提取团队节奏和通勤反馈。"
+        },
+        {
+          "source_id": "src-hz-012",
+          "source_type": "news",
+          "label": "36Kr 行业报道摘录",
+          "url": "https://example.com/news/hqtrip-36kr",
+          "observed_at": "2026-06-21",
+          "note": "用于补充业务阶段和融资背景。"
+        }
+      ]
+    },
+    {
+      "sentiment_id": "sent-hz-002",
+      "company_id": "lakeflow-robotics",
+      "community_source": "niuke",
+      "news_source": "local-tech-news",
+      "pros": [
+        "工业数字孪生方向有较强技术深度",
+        "近期扩张信息与官方招聘页相互印证"
+      ],
+      "cons": [
+        "经验门槛偏高",
+        "业务节奏可能偏快"
+      ],
+      "summary": "成长性信号较强，且官方岗位信息完整，但更适合愿意接受较高门槛和业务节奏的候选人。",
+      "observed_at": "2026-06-29",
+      "source_refs": [
+        {
+          "source_id": "src-hz-013",
+          "source_type": "community",
+          "label": "牛客机器人公司讨论",
+          "url": "https://example.com/community/lakeflow-robotics-niuke",
+          "observed_at": "2026-06-26",
+          "note": "用于提取面试流程和团队节奏反馈。"
+        },
+        {
+          "source_id": "src-hz-010",
+          "source_type": "news",
+          "label": "智能制造行业报道中的澜流机器人扩张信息",
+          "url": "https://example.com/news/lakeflow-robotics-expansion",
+          "observed_at": "2026-06-22",
+          "note": "用于补充业务增长与区域扩张信号。"
+        }
+      ]
+    },
+    {
+      "sentiment_id": "sent-hz-003",
+      "company_id": "qianmu-ai",
+      "community_source": "niuke",
+      "news_source": "local-tech-news",
+      "pros": [
+        "工业 AI 赛道增长预期较强",
+        "岗位强调前端可视化，有技术深度"
+      ],
+      "cons": [
+        "薪资公开度不足",
+        "岗位年限要求偏高"
+      ],
+      "summary": "公司成长性较强，但公开岗位对资深度要求较高，且风评样本仍偏少，适合继续跟踪而不是直接下强结论。",
+      "observed_at": "2026-06-27",
+      "source_refs": [
+        {
+          "source_id": "src-hz-014",
+          "source_type": "community",
+          "label": "牛客杭州 AI 公司讨论",
+          "url": "https://example.com/community/qianmu-ai-niuke",
+          "observed_at": "2026-06-24",
+          "note": "用于提取候选人对面试流程和团队氛围的反馈。"
+        },
+        {
+          "source_id": "src-hz-015",
+          "source_type": "news",
+          "label": "本地科技媒体对千目智能的报道",
+          "url": "https://example.com/news/qianmu-ai-local",
+          "observed_at": "2026-06-19",
+          "note": "用于补充公司业务方向与市场阶段。"
+        }
+      ]
+    }
+  ]
+}

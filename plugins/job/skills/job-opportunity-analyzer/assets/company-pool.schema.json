@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://poseidon.local/plugins/job/job-opportunity-analyzer/assets/company-pool.schema.json",
+  "title": "Job Opportunity Analyzer Company Pool",
+  "description": "Lightweight schema for city-level company pool samples used by the job-opportunity-analyzer skill.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "city",
+    "companies",
+    "job_opportunities",
+    "company_sentiments"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version for compatibility checks. Bump MAJOR on breaking field changes and MINOR on additive changes.",
+      "pattern": "^v[0-9]+\\.[0-9]+$"
+    },
+    "city": {
+      "type": "string",
+      "description": "Target city slug for this fact set, such as hangzhou or shanghai."
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "Optional date when the sample file was assembled.",
+      "format": "date"
+    },
+    "companies": {
+      "type": "array",
+      "description": "City-level company candidates captured as CompanyProfile entries.",
+      "items": {
+        "$ref": "#/$defs/CompanyProfile"
+      }
+    },
+    "job_opportunities": {
+      "type": "array",
+      "description": "Observed opportunities linked back to a company_id.",
+      "items": {
+        "$ref": "#/$defs/JobOpportunity"
+      }
+    },
+    "company_sentiments": {
+      "type": "array",
+      "description": "Public sentiment notes linked back to a company_id.",
+      "items": {
+        "$ref": "#/$defs/CompanySentiment"
+      }
+    }
+  },
+  "$defs": {
+    "SourceRef": {
+      "type": "object",
+      "description": "Traceable source reference for a fact, observation, or inclusion reason.",
+      "required": [
+        "source_id",
+        "source_type",
+        "label",
+        "observed_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "description": "Stable identifier within the sample file, such as src-hz-001."
+        },
+        "source_type": {
+          "type": "string",
+          "description": "High-level source category used by the skill to weigh evidence strength.",
+          "enum": [
+            "official",
+            "job_board",
+            "school_board",
+            "industry_list",
+            "community",
+            "news",
+            "manual_note"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "description": "Short human-readable source title."
+        },
+        "url": {
+          "type": "string",
+          "description": "Public page URL when available.",
+          "format": "uri"
+        },
+        "observed_at": {
+          "type": "string",
+          "description": "Date when the source was checked or noted.",
+          "format": "date"
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional short context about what the source supports."
+        }
+      }
+    },
+    "CompanyProfile": {
+      "type": "object",
+      "description": "Minimal company profile for candidate selection and follow-up analysis.",
+      "required": [
+        "company_id",
+        "name",
+        "city",
+        "tier",
+        "known_business",
+        "source_refs",
+        "last_verified"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "company_id": {
+          "type": "string",
+          "description": "Stable slug-like identifier referenced by opportunities and sentiment entries."
+        },
+        "name": {
+          "type": "string",
+          "description": "Public company name used in reports."
+        },
+        "city": {
+          "type": "string",
+          "description": "Primary city slug for this company profile."
+        },
+        "tier": {
+          "type": "string",
+          "description": "Simple candidate tier used for prioritization in the company pool.",
+          "enum": [
+            "T1",
+            "T2",
+            "T3",
+            "T4"
+          ]
+        },
+        "official_website": {
+          "type": "string",
+          "description": "Company website URL when known.",
+          "format": "uri"
+        },
+        "career_url": {
+          "type": "string",
+          "description": "Hiring page URL when known.",
+          "format": "uri"
+        },
+        "known_business": {
+          "type": "array",
+          "description": "Short business or product labels that explain why the company matters for the target market.",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "employee_count": {
+          "description": "Approximate employee count when a public estimate exists; keep null when unknown.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "avg_rating": {
+          "description": "Approximate aggregated public rating from a trusted public source; keep null when unavailable.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 5
+        },
+        "tags": {
+          "type": "array",
+          "description": "Search and grouping tags, such as saas, ai, e-commerce, or local-dragon-head.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string",
+          "description": "Freeform operator note that stays short and factual."
+        },
+        "include_reason": {
+          "type": "string",
+          "description": "Short reason this company entered the city candidate pool."
+        },
+        "source_refs": {
+          "type": "array",
+          "description": "Traceable source references supporting company existence, hiring relevance, or tier placement.",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          }
+        },
+        "last_verified": {
+          "type": "string",
+          "description": "Last date this company profile was manually checked.",
+          "format": "date"
+        }
+      }
+    },
+    "JobOpportunity": {
+      "type": "object",
+      "description": "Observed job opportunity linked to a company profile.",
+      "required": [
+        "opportunity_id",
+        "company_id",
+        "job_title",
+        "source_type",
+        "source_refs",
+        "match_reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "opportunity_id": {
+          "type": "string",
+          "description": "Stable identifier for this opportunity entry."
+        },
+        "company_id": {
+          "type": "string",
+          "description": "Reference to the matching CompanyProfile.company_id."
+        },
+        "job_title": {
+          "type": "string",
+          "description": "Original or normalized role title."
+        },
+        "tech_stack": {
+          "type": "array",
+          "description": "Observed or inferred technology keywords relevant to the role.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "experience_required": {
+          "type": "string",
+          "description": "Original public experience requirement text. Keep raw wording when standardization is unsafe."
+        },
+        "salary_range": {
+          "type": "string",
+          "description": "Original public salary text, such as 20-30K·14薪 or 面议."
+        },
+        "job_url": {
+          "type": "string",
+          "description": "Public job posting URL when available.",
+          "format": "uri"
+        },
+        "source_type": {
+          "type": "string",
+          "description": "Primary source type for this opportunity entry.",
+          "enum": [
+            "official",
+            "job_board",
+            "school_board",
+            "manual_note"
+          ]
+        },
+        "match_reason": {
+          "type": "string",
+          "description": "Short explanation of why this opportunity is relevant to the requested role or market."
+        },
+        "salary_match": {
+          "type": "string",
+          "description": "Human-readable match status instead of an over-precise score.",
+          "enum": [
+            "match",
+            "partial",
+            "unaligned",
+            "unknown"
+          ]
+        },
+        "risk_flags": {
+          "type": "array",
+          "description": "Compact list of warnings such as salary_unaligned or role_scope_unclear.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "description": "References that support the role details or matching rationale.",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          }
+        }
+      }
+    },
+    "CompanySentiment": {
+      "type": "object",
+      "description": "Public sentiment summary captured from community or news sources.",
+      "required": [
+        "sentiment_id",
+        "company_id",
+        "summary",
+        "observed_at",
+        "source_refs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sentiment_id": {
+          "type": "string",
+          "description": "Stable identifier for this sentiment note."
+        },
+        "company_id": {
+          "type": "string",
+          "description": "Reference to the matching CompanyProfile.company_id."
+        },
+        "community_source": {
+          "type": "string",
+          "description": "Primary community source name when the note is discussion-driven, such as v2ex or niuke."
+        },
+        "news_source": {
+          "type": "string",
+          "description": "Primary news source name when the note is article-driven."
+        },
+        "pros": {
+          "type": "array",
+          "description": "Observed positive signals kept as short bullet-like phrases.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cons": {
+          "type": "array",
+          "description": "Observed risks or downsides kept as short bullet-like phrases.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string",
+          "description": "Balanced short summary that distinguishes observation from final judgment."
+        },
+        "observed_at": {
+          "type": "string",
+          "description": "Date when this sentiment note was compiled.",
+          "format": "date"
+        },
+        "source_refs": {
+          "type": "array",
+          "description": "Underlying community or news references supporting the summary.",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          }
+        }
+      }
+    }
+  }
+}

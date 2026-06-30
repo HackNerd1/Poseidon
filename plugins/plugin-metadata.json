@@ -40,6 +40,25 @@
       ],
       "category": "Development"
     },
+    "job": {
+      "version": "0.1.0",
+      "description": "求职机会分析插件 — 围绕目标城市、岗位关键词和候选公司池，整理公开来源信息并输出结构化分析报告、数据 schema 和来源清单",
+      "author": {
+        "name": "Hansel"
+      },
+      "license": "MIT",
+      "keywords": [
+        "job",
+        "career",
+        "job-search",
+        "company-research",
+        "hiring",
+        "frontend",
+        "求职",
+        "岗位分析"
+      ],
+      "category": "Career"
+    },
     "resume": {
       "version": "0.1.0",
       "description": "简历相关技能集合 — 从 Git 仓库提取项目经验、交互式创建符合简历规范的完整简历（含 JD 匹配优化，支持所有岗位）",
