@@ -7,9 +7,17 @@ description: '从需求到实施的渐进式计划工作流。当用户提供需
 
 ## 概述
 
-你将帮助用户将模糊需求逐步转化为可执行的实施计划。核心原则：**先澄清、再计划、后派发**。流程覆盖：输入验证 → 需求探讨 → 需求文档 → 总体计划 → 详细计划 → 派发实施 → 循环迭代。
+你将帮助用户将模糊需求逐步转化为可执行的实施计划。核心原则：**先澄清、回归第一性原理、再计划、后派发**。流程覆盖：输入验证 → 需求探讨 → 需求文档 → 总体计划 → 详细计划 → 派发实施 → 循环迭代。
 
 你充当 Claude-Native Loop Controller：读取参考模板、评估需求清晰度、调度子 agent 执行任务、通过 TODO 跟踪进度。
+
+默认输出原则：
+- **默认极简**：只保留推进决策和实施所必需的信息
+- **不要为了拆分而拆分**：同一条最小交付链路默认合并
+
+文档写入原则：
+- `local`：直接写入 `docs/requirements/`
+- `feishu` / `notion`：始终先写本地副本，再按对应 workflow 同步远端
 
 ## 输入要求
 
@@ -62,11 +70,7 @@ Read `references/requirement-clarification-guide.md`，获取：
 
 #### 1.5 评分更新与总结
 
-每轮更新评分（如"45 → 65，+20"）。≥90 分后，按指南第七章模板生成澄清记录：
-
-**输出**（local）：`docs/requirements/<feature-slug>-clarification.md`
-**输出**（feishu）：先写入 `.Poseidon/feishu/<slug>-clarification.md`，再按 `feishu-workflow.md` 三.1 节推送至飞书。
-**输出**（notion）：先写入 `.Poseidon/notion/<slug>-clarification.md`，再按 `notion-workflow.md` 第四章推送至 Notion。
+每轮更新评分（如"45 → 65，+20"）。≥90 分后，按指南第七章模板生成澄清记录并按当前存储方式落盘/同步。
 
 告知用户评分和记录路径，确认后进入 Step 2。
 
@@ -88,11 +92,7 @@ Read `references/requirement-doc-template.md`，按模板结构填充：
 5. 范围边界（范围内 + 范围外）
 6. 约束与假设
 
-生成后按模板质量检查清单自检。
-
-**输出**（local）：`docs/requirements/<feature-slug>.md`
-**输出**（feishu）：先写入 `.Poseidon/feishu/<slug>-requirement.md`，再推送飞书，更新 `doc-map.json`。
-**输出**（notion）：先写入 `.Poseidon/notion/<slug>-requirement.md`，再推送 Notion，更新 `doc-map.json`。
+生成后按模板质量检查清单自检，并按当前存储方式落盘/同步。
 
 确认后进入 Step 3。
 
@@ -111,7 +111,7 @@ Read `references/requirement-doc-template.md`，按模板结构填充：
 Read `references/overall-plan-template.md` 了解文档结构。
 Read `references/code-execution-standards.md` 第二章获取 Plan Agent Prompt 模板。
 
-按模板构造 prompt，包含：需求文档路径、澄清记录路径、架构约束、阶段划分原则。
+按模板构造 prompt，包含：需求文档路径、澄清记录路径、架构约束。总体计划的第一性原理、阶段划分、最小可行性验证和极简输出规则统一以 `code-execution-standards.md` 2.1 与 `overall-plan-template.md` 为准。
 
 使用 **Agent tool** 派发 `Plan` 类型子 agent：
 
@@ -124,17 +124,9 @@ Agent tool:
 
 #### 3.3 验证与 TODO 创建
 
-子 agent 完成后，按 `code-execution-standards.md` 5.1 节验收：
-- [ ] 计划文档已写入指定路径
-- [ ] 文档结构符合 overall-plan-template.md
-- [ ] 阶段划分符合垂直切片原则
-- [ ] 依赖关系明确，无循环依赖
+子 agent 完成后，按 `code-execution-standards.md` 5.1 节验收。
 
 通过后为每个阶段的宏观任务创建 TODO（TaskCreate）。
-
-**输出**（local）：`docs/requirements/<feature-slug>-overall-plan.md`
-**输出**（feishu）：先写入 `.Poseidon/feishu/<slug>-overall-plan.md`，再推送飞书。
-**输出**（notion）：先写入 `.Poseidon/notion/<slug>-overall-plan.md`，再推送 Notion。
 
 完成后告知用户阶段数量，确认后进入 Step 4。
 
@@ -157,7 +149,7 @@ Agent tool:
 Read `references/plan-template.md` 了解文档结构。
 Read `references/code-execution-standards.md` 第二章获取 Plan Agent Prompt 模板。
 
-按模板构造 prompt，包含：需求文档路径、总体计划路径（如有）、澄清记录路径、架构约束、任务拆分原则（垂直切片、粒度 S/M、独立可测、依赖清晰）。
+按模板构造 prompt，包含：需求文档路径、总体计划路径（如有）、澄清记录路径、架构约束。详细计划的任务粒度、第一性原理、最小可行性验证、图示、测试策略和“未来导向”约束统一以 `code-execution-standards.md` 2.2 与 `plan-template.md` 为准。
 
 使用 **Agent tool** 派发 `Plan` 类型子 agent：
 
@@ -172,17 +164,9 @@ Agent tool:
 
 #### 4.3 验证与 TODO 创建
 
-子 agent 完成后，按 `code-execution-standards.md` 5.1 节验收：
-- [ ] 任务拆分粒度合理（S/M 规模，3-7 个/阶段）
-- [ ] 每个任务有明确的验收标准和验证方式
-- [ ] 依赖关系图无循环，并行任务已标注
-- [ ] 架构约束已纳入考量
+子 agent 完成后，按 `code-execution-standards.md` 5.1 节验收。
 
 通过后为每个叶子任务创建 TODO（TaskCreate）。
-
-**输出**（local）：`docs/requirements/<feature-slug>-detailed-plan-p<n>.md`
-**输出**（feishu）：先写入 `.Poseidon/feishu/<slug>-detailed-plan-p<n>.md`，再推送飞书。
-**输出**（notion）：先写入 `.Poseidon/notion/<slug>-detailed-plan-p<n>.md`，再推送 Notion。
 
 完成后告知用户任务数、依赖关系和并行可能性，进入 Step 5。
 
@@ -206,13 +190,7 @@ Read `references/code-execution-standards.md` 第三章，获取 Code Agent Prom
 
 **用户确认后才派发**，不自动派发。
 
-派发时使用 **Agent tool**（`general-purpose` 类型），按 `code-execution-standards.md` 第三章 Prompt 模板构造，**必须注入以下开发规范**：
-1. 关键代码必须添加注释（公共函数、复杂逻辑、非显而易见的决策）
-2. 核心逻辑必须添加测试用例（Happy Path + 边界值 + 异常路径）
-3. 遵循项目架构约束文档（目录结构、命名规范、错误处理模式）
-4. 先搜索项目中类似实现，保持风格一致；不确定时搜索网络最佳实践
-
-子 agent 完成后按 `dispatch-strategies.md` 3.3 节逐项验证（验收标准 + 注释 + 测试 + 风格一致性），不通过则要求补充。
+派发时使用 **Agent tool**（`general-purpose` 类型），按 `code-execution-standards.md` 第三章构造 prompt，并按第五章与 `dispatch-strategies.md` 3.3 节验收；不通过则要求补充。
 
 ### Step 6：更新与循环
 
@@ -268,7 +246,7 @@ Read `references/code-execution-standards.md` 第三章，获取 Code Agent Prom
 4. **计划文档可追溯**：每个文档关联上一步文档，形成完整链
 5. **TODO 同步更新**：TaskCreate/TaskUpdate 与文档同步
 6. **架构约束优先**：未找到约束文档时主动询问
-7. **垂直切片原则**：按功能切片不按技术层切分
+7. **计划与实施规范外置**：计划生成、模板约束、开发规范、验收标准以 `code-execution-standards.md` 和各 template 为准
 8. **子 agent 不自动派发**：必须用户确认
 9. **进度持久化**：所有文档和 TODO 写入文件系统，支持中断恢复
 10. **每步确认**：Step 1→2、Step 3→4、Step 5 派发、Step 6 循环均需确认
