@@ -1,6 +1,6 @@
 # 详细计划文档模板
 
-> 此文档为 plan skill 的 L3 参考文档，在 SKILL.md Step 4 中按需加载。
+> 此文档为 plan skill 的 L3 参考文档，在 SKILL.md Step 5 中按需加载。
 > 定义了单个阶段（Phase）的详细实施计划文档结构。
 
 ---
@@ -191,7 +191,7 @@ graph TD
 
 ## 使用说明
 
-此模板在 SKILL.md Step 4 中被加载。Claude 应：
+此模板在 SKILL.md Step 5 中被加载。Claude 应：
 
 1. 读取此模板了解详细计划的结构
 2. 基于用户的架构约束文档（architecture.md / CLAUDE.md）填充第 2 章

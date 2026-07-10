@@ -7,13 +7,14 @@ description: '从需求到实施的渐进式计划工作流。当用户提供需
 
 ## 概述
 
-你将帮助用户将模糊需求逐步转化为可执行的实施计划。核心原则：**先澄清、回归第一性原理、再计划、后派发**。流程覆盖：输入验证 → 需求探讨 → 需求文档 → 总体计划 → 详细计划 → 派发实施 → 循环迭代。
+你将帮助用户将模糊需求逐步转化为可执行的实施计划。核心原则：**先澄清、回归第一性原理、再计划、后派发**。流程覆盖：输入验证 → 需求探讨 → 快速路径或标准路径 → 派发实施 → 循环迭代。
 
 你充当 Claude-Native Loop Controller：读取参考模板、评估阻塞未知数、调度子 agent 执行任务、通过计划文档中的 Markdown checkbox 跟踪进度。
 
 默认输出原则：
 - **默认极简**：只保留推进决策和实施所必需的信息
 - **不要为了拆分而拆分**：同一条最小交付链路默认合并
+- **小需求优先快速路径**：能用一份简化计划推进的，不进入完整文档链路
 
 文档写入原则：
 - `local`：直接写入 `docs/requirements/`
@@ -85,15 +86,44 @@ Read `references/requirement-clarification-guide.md`，获取：
 
 告知用户阻塞未知数结论和记录路径，确认后进入 Step 2。
 
-### Step 2：更新/创建需求文档
+### Step 2：判断快速路径还是标准路径
+
+满足以下多数特征时，优先走 **Fast Path**：
+
+- 单文件修改或单一功能点调整
+- 配置变更、简单 Bug 修复、小型重构
+- 预估总任务数 ≤ 3
+- 不需要跨阶段推进
+- 不需要多人协作或显式里程碑跟踪
+
+#### 2.1 Fast Path
+
+若满足快速路径条件：
+
+1. 直接生成一份简化计划，写入 `docs/requirements/<feature-slug>-micro-plan.md`
+2. 简化计划只保留：
+   - 目标
+   - 范围内 / 范围外
+   - 关键约束
+   - 3-5 个执行步骤
+   - 验收方式
+   - 如有必要，补 1 个最小验证任务
+3. 不强制创建独立需求文档和总体计划
+4. 生成后告知用户路径与执行步骤摘要；如用户确认实施，直接进入 Step 6
+
+#### 2.2 标准路径
+
+若不满足快速路径条件，进入 Step 3。
+
+### Step 3：更新/创建需求文档
 
 > **L3 加载**：`references/requirement-doc-template.md`
 
-#### 2.1 判断是否需要更新
+#### 3.1 判断是否需要更新
 
 检查是否已有需求文档。如有 → 对比差异，询问更新（A: 更新 / B: 保留 / C: 新建版本）。如无 → 直接创建。
 
-#### 2.2 生成需求文档
+#### 3.2 生成需求文档
 
 Read `references/requirement-doc-template.md`，按模板结构填充：
 1. 背景与目标
@@ -105,19 +135,19 @@ Read `references/requirement-doc-template.md`，按模板结构填充：
 
 生成后按模板质量检查清单自检，并按当前存储方式落盘/同步。
 
-确认后进入 Step 3。
+确认后进入 Step 4。
 
-### Step 3：生成总体计划
+### Step 4：生成总体计划
 
 > **L3 加载**：`references/overall-plan-template.md`、`references/code-execution-standards.md`（planning sub-agent prompt 模板）
 
-#### 3.1 评估是否需要总体计划
+#### 4.1 评估是否需要总体计划
 
-改动很小（单文件修改、配置变更、Bug 修复、预估 ≤3 个任务）→ 跳过，告知用户后直接进入 Step 4。
+若当前需求其实仍属于小改动（单文件修改、配置变更、Bug 修复、预估 ≤3 个任务），说明应优先改走 Fast Path；回到 Step 2.1 生成简化计划。
 
-否则进入 3.2。
+否则进入 4.2。
 
-#### 3.2 派发 planning sub-agent 生成总体计划
+#### 4.2 派发 planning sub-agent 生成总体计划
 
 Read `references/overall-plan-template.md` 了解文档结构。
 Read `references/code-execution-standards.md` 第二章获取 planning sub-agent prompt 模板。
@@ -133,19 +163,19 @@ Agent tool:
   subagent_type: "general-purpose"
 ```
 
-#### 3.3 验证与 TODO 创建
+#### 4.3 验证与 TODO 创建
 
 子 agent 完成后，按 `code-execution-standards.md` 5.1 节验收。
 
 通过后将每个阶段的宏观任务写入总体计划文档中的 checkbox 列表。
 
-完成后告知用户阶段数量，确认后进入 Step 4。
+完成后告知用户阶段数量，确认后进入 Step 5。
 
-### Step 4：生成详细计划
+### Step 5：生成详细计划
 
 > **L3 加载**：`references/plan-template.md`、`references/code-execution-standards.md`、项目架构约束文档
 
-#### 4.1 搜索架构约束
+#### 5.1 搜索架构约束
 
 搜索项目架构约束（按优先级）：
 1. 用户指定的路径
@@ -155,7 +185,7 @@ Agent tool:
 
 未找到 → 询问用户。找到 → 提取关键约束（技术栈、目录约定、命名规范、测试要求）。
 
-#### 4.2 派发 planning sub-agent 生成详细计划
+#### 5.2 派发 planning sub-agent 生成详细计划
 
 Read `references/plan-template.md` 了解文档结构。
 Read `references/code-execution-standards.md` 第二章获取 planning sub-agent prompt 模板。
@@ -173,15 +203,15 @@ Agent tool:
 
 如果多个阶段可并行规划，可同时派发多个 planning sub-agent（如 Phase 2 和 Phase 3 同时规划）。
 
-#### 4.3 验证与 TODO 创建
+#### 5.3 验证与 TODO 创建
 
 子 agent 完成后，按 `code-execution-standards.md` 5.1 节验收。
 
 通过后将每个叶子任务写入详细计划文档中的 checkbox 列表；后续执行状态直接回填文档，不依赖外部 TODO API。
 
-完成后告知用户任务数、依赖关系和并行可能性，进入 Step 5。
+完成后告知用户任务数、依赖关系和并行可能性，进入 Step 6。
 
-### Step 5：询问派发实施
+### Step 6：询问派发实施
 
 > **L3 加载**：`references/dispatch-strategies.md`、`references/code-execution-standards.md`
 
@@ -203,9 +233,9 @@ Read `references/code-execution-standards.md` 第三章，获取 Code Agent Prom
 
 派发时使用 **Agent tool**（`general-purpose` 类型），按 `code-execution-standards.md` 第三章构造 prompt，并按第五章与 `dispatch-strategies.md` 3.3 节验收；不通过则要求补充。
 
-### Step 6：更新与循环
+### Step 7：更新与循环
 
-#### 6.1 任务完成后更新
+#### 7.1 任务完成后更新
 
 每个子 agent 完成后，按 `code-execution-standards.md` 5.2 节验收：
 - 验收标准逐条达成 → 标记 `[x]`
@@ -224,26 +254,26 @@ Read `references/code-execution-standards.md` 第三章，获取 Code Agent Prom
 
 子 agent 失败时按 `dispatch-strategies.md` 3.4 节处理（重试/调整/人工介入）。
 
-#### 6.2 询问是否继续
+#### 7.2 询问是否继续
 
 当前批次全部完成后：
 
 > Phase <N> 已完成（<done>/<total>）。是否继续？
-> 1. 生成下一批次计划 → 回到 Step 4
-> 2. 调整后生成 → 描述调整，回到 Step 4
+> 1. 生成下一批次计划 → 回到 Step 5
+> 2. 调整后生成 → 描述调整，回到 Step 5
 > 3. 全部完成 → 输出总结
 > 4. 暂停 → 保存进度
 
-#### 6.3 输出总结
+#### 7.3 输出总结
 
 全部阶段完成时输出结构化总结：
 
 ```
 📋 计划总结 — <功能名称>
 ├── 📝 需求澄清：<阻塞未知数结论> | <path>
-├── 📄 需求文档：<path>
-├── 🗺️ 总体计划：<N> 阶段 <M> 任务 | <path>
-├── 📐 详细计划：Phase <current> | <path>
+├── 📄 需求文档 / 简化计划：<path>
+├── 🗺️ 总体计划：<N> 阶段 <M> 任务 | <path or "Fast Path 跳过">
+├── 📐 详细计划：Phase <current> | <path or "Fast Path 跳过">
 ├── ✅ 已完成：<done>/<total> 任务
 ├── 🔜 下一阶段：<next phase or "无">
 └── 📚 架构约束来源：<path or "通用最佳实践">
@@ -260,14 +290,15 @@ Read `references/code-execution-standards.md` 第三章，获取 Code Agent Prom
 7. **计划与实施规范外置**：计划生成、模板约束、开发规范、验收标准以 `code-execution-standards.md` 和各 template 为准
 8. **子 agent 不自动派发**：必须用户确认
 9. **进度持久化**：所有文档和进度记录写入文件系统，支持中断恢复
-10. **每步确认**：Step 1→2、Step 3→4、Step 5 派发、Step 6 循环均需确认
+10. **每步确认**：默认只在路径切换、生成结果落盘、派发实施、继续下一批次时确认；Fast Path 不强制逐步确认
 11. **远端文档本地优先**：`feishu` / `notion` 都必须先写本地副本，再同步到云端
 12. **Notion 显式目标**：Notion 模式下必须由用户显式提供页面或 database 的 URL / ID
 13. **Notion 只负责内容**：Notion workflow 默认只负责文档内容创建、更新、读取，不负责模板、项目结构或归档策略
 
 ## 边界情况
 
-- **需求是代码**（如"重构 utils/helper.js"）→ 跳过 Step 1-2，直接 Step 3，以代码文件为需求来源
+- **需求是代码**（如"重构 utils/helper.js"）→ 跳过需求澄清对话，直接判断是否走 Fast Path；小需求走 Step 2.1，否则从 Step 3 开始
+- **需求很小** → 优先走 Fast Path，避免生成完整需求文档、总体计划和详细计划
 - **用户中途修改需求** → 回到 Step 1 重新评估，增量更新现有文档
 - **架构约束与需求冲突** → 明确指出冲突，让用户决策
 - **飞书 CLI 不可用** → 降级为 local，告知用户。详见 `feishu-workflow.md` 第五章
