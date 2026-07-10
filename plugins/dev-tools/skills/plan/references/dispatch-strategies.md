@@ -177,8 +177,8 @@ Implement LOGIN-P1-01: Create user model
 > **已迁移至** `references/code-execution-standards.md`
 >
 > 该文档包含完整的：
-> - Agent 类型选择（Plan agent vs general-purpose agent）
-> - Plan Agent Prompt 模板（Step 3/4 生成计划用）
+> - Agent 类型选择（当前默认统一为 general-purpose sub-agent）
+> - Planning sub-agent prompt 模板（Step 3/4 生成计划用）
 > - Code Agent Prompt 模板（Step 5 实施代码用）
 > - 四类开发规范详解（注释、测试、约束、搜索）
 > - Agent 结果验收标准

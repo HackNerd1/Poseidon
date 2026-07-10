@@ -9,15 +9,15 @@
 
 | 场景 | Agent 类型 | 说明 |
 |------|-----------|------|
-| 生成总体计划（Step 3） | `Plan` | 软件架构 agent，擅长阶段划分、里程碑设计 |
-| 生成详细计划（Step 4） | `Plan` | 软件架构 agent，擅长任务拆分、依赖分析 |
-| 实施代码（Step 5） | `general-purpose` | 通用 agent，支持读写文件和执行命令 |
+| 生成总体计划（Step 3） | `general-purpose` | 通用子 agent，负责读取材料并写出总体计划文档 |
+| 生成详细计划（Step 4） | `general-purpose` | 通用子 agent，负责拆分任务、依赖和验收标准 |
+| 实施代码（Step 5） | `general-purpose` | 通用子 agent，支持读写文件和执行命令 |
 
-Plan agent 只负责生成计划文档，不写代码。general-purpose agent 负责实际代码实施。
+当前 skill 默认只依赖 `general-purpose` 子 agent。计划生成与代码实施共用同一种子 agent 类型，差异由 prompt 和验收标准约束。
 
 ---
 
-## 二、Plan Agent Prompt 模板（Step 3 / Step 4）
+## 二、Planning Sub-Agent Prompt 模板（Step 3 / Step 4）
 
 ### 2.1 总体计划生成（Step 3）
 
@@ -218,7 +218,7 @@ Plan agent 只负责生成计划文档，不写代码。general-purpose agent �
 
 ## 五、Agent 结果验收
 
-### 5.1 Plan Agent 验收（Step 3/4）
+### 5.1 Planning Sub-Agent 验收（Step 3/4）
 
 - [ ] 计划文档已写入指定路径
 - [ ] 文档结构符合对应模板（overall-plan-template / plan-template）

@@ -9,7 +9,7 @@ description: '从需求到实施的渐进式计划工作流。当用户提供需
 
 你将帮助用户将模糊需求逐步转化为可执行的实施计划。核心原则：**先澄清、回归第一性原理、再计划、后派发**。流程覆盖：输入验证 → 需求探讨 → 需求文档 → 总体计划 → 详细计划 → 派发实施 → 循环迭代。
 
-你充当 Claude-Native Loop Controller：读取参考模板、评估需求清晰度、调度子 agent 执行任务、通过 TODO 跟踪进度。
+你充当 Claude-Native Loop Controller：读取参考模板、评估需求清晰度、调度子 agent 执行任务、通过计划文档中的 Markdown checkbox 跟踪进度。
 
 默认输出原则：
 - **默认极简**：只保留推进决策和实施所必需的信息
@@ -98,7 +98,7 @@ Read `references/requirement-doc-template.md`，按模板结构填充：
 
 ### Step 3：生成总体计划
 
-> **L3 加载**：`references/overall-plan-template.md`、`references/code-execution-standards.md`（Plan Agent Prompt 模板）
+> **L3 加载**：`references/overall-plan-template.md`、`references/code-execution-standards.md`（planning sub-agent prompt 模板）
 
 #### 3.1 评估是否需要总体计划
 
@@ -106,27 +106,27 @@ Read `references/requirement-doc-template.md`，按模板结构填充：
 
 否则进入 3.2。
 
-#### 3.2 派发 Plan Agent 生成总体计划
+#### 3.2 派发 planning sub-agent 生成总体计划
 
 Read `references/overall-plan-template.md` 了解文档结构。
-Read `references/code-execution-standards.md` 第二章获取 Plan Agent Prompt 模板。
+Read `references/code-execution-standards.md` 第二章获取 planning sub-agent prompt 模板。
 
 按模板构造 prompt，包含：需求文档路径、澄清记录路径、架构约束。总体计划的第一性原理、阶段划分、最小可行性验证和极简输出规则统一以 `code-execution-standards.md` 2.1 与 `overall-plan-template.md` 为准。
 
-使用 **Agent tool** 派发 `Plan` 类型子 agent：
+使用 **Agent tool** 派发 `general-purpose` 类型子 agent：
 
 ```
 Agent tool:
   description: "Generate overall plan for <feature-name>"
   prompt: <按 code-execution-standards.md 第二章模板构造>
-  subagent_type: "Plan"
+  subagent_type: "general-purpose"
 ```
 
 #### 3.3 验证与 TODO 创建
 
 子 agent 完成后，按 `code-execution-standards.md` 5.1 节验收。
 
-通过后为每个阶段的宏观任务创建 TODO（TaskCreate）。
+通过后将每个阶段的宏观任务写入总体计划文档中的 checkbox 列表。
 
 完成后告知用户阶段数量，确认后进入 Step 4。
 
@@ -144,29 +144,29 @@ Agent tool:
 
 未找到 → 询问用户。找到 → 提取关键约束（技术栈、目录约定、命名规范、测试要求）。
 
-#### 4.2 派发 Plan Agent 生成详细计划
+#### 4.2 派发 planning sub-agent 生成详细计划
 
 Read `references/plan-template.md` 了解文档结构。
-Read `references/code-execution-standards.md` 第二章获取 Plan Agent Prompt 模板。
+Read `references/code-execution-standards.md` 第二章获取 planning sub-agent prompt 模板。
 
 按模板构造 prompt，包含：需求文档路径、总体计划路径（如有）、澄清记录路径、架构约束。详细计划的任务粒度、第一性原理、最小可行性验证、图示、测试策略和“未来导向”约束统一以 `code-execution-standards.md` 2.2 与 `plan-template.md` 为准。
 
-使用 **Agent tool** 派发 `Plan` 类型子 agent：
+使用 **Agent tool** 派发 `general-purpose` 类型子 agent：
 
 ```
 Agent tool:
   description: "Generate detailed plan for <feature-name> Phase <N>"
   prompt: <按 code-execution-standards.md 第二章模板构造>
-  subagent_type: "Plan"
+  subagent_type: "general-purpose"
 ```
 
-如果多个阶段可并行规划，可同时派发多个 Plan agent（如 Phase 2 和 Phase 3 同时规划）。
+如果多个阶段可并行规划，可同时派发多个 planning sub-agent（如 Phase 2 和 Phase 3 同时规划）。
 
 #### 4.3 验证与 TODO 创建
 
 子 agent 完成后，按 `code-execution-standards.md` 5.1 节验收。
 
-通过后为每个叶子任务创建 TODO（TaskCreate）。
+通过后将每个叶子任务写入详细计划文档中的 checkbox 列表；后续执行状态直接回填文档，不依赖外部 TODO API。
 
 完成后告知用户任务数、依赖关系和并行可能性，进入 Step 5。
 
@@ -203,7 +203,7 @@ Read `references/code-execution-standards.md` 第三章，获取 Code Agent Prom
 通过后：
 1. 更新详细计划文档：标记完成项 `[x]`
 2. 更新总体计划文档：阶段内全部完成则标记阶段完成
-3. 更新 TODO：TaskUpdate 标记 `completed`
+3. 以计划文档中的 checkbox 为唯一进度事实源
 
 如果存储方式为 `notion`，且当前文档需要更新已有页面内容，按 `notion-workflow.md` 三.3 / 四.2 节执行：
 1. 优先保留本地 Markdown 为事实源
@@ -244,11 +244,11 @@ Read `references/code-execution-standards.md` 第三章，获取 Code Agent Prom
 2. **每轮 2-3 个问题**：给选项减少输入；量化模糊词
 3. **渐进式加载**：每步开始时显式 Read 对应 reference，不过早加载
 4. **计划文档可追溯**：每个文档关联上一步文档，形成完整链
-5. **TODO 同步更新**：TaskCreate/TaskUpdate 与文档同步
+5. **进度以文档为准**：计划文档中的 checkbox 是默认进度事实源
 6. **架构约束优先**：未找到约束文档时主动询问
 7. **计划与实施规范外置**：计划生成、模板约束、开发规范、验收标准以 `code-execution-standards.md` 和各 template 为准
 8. **子 agent 不自动派发**：必须用户确认
-9. **进度持久化**：所有文档和 TODO 写入文件系统，支持中断恢复
+9. **进度持久化**：所有文档和进度记录写入文件系统，支持中断恢复
 10. **每步确认**：Step 1→2、Step 3→4、Step 5 派发、Step 6 循环均需确认
 11. **远端文档本地优先**：`feishu` / `notion` 都必须先写本地副本，再同步到云端
 12. **Notion 显式目标**：Notion 模式下必须由用户显式提供页面或 database 的 URL / ID
