@@ -1,6 +1,6 @@
 ---
 name: plan
-description: '从需求到实施的渐进式计划工作流。当用户提供需求描述/文档链接要求制定实施计划、澄清需求、拆分任务时触发。适用场景：需求澄清与阻塞未知数识别、需求文档生成、总体计划制定、详细任务拆分、分批派发子 agent 实施。支持 local / feishu / notion 存储（远端同步调用 doc-sync；Prompt/规范/验收调用 code-agent）。触发短语："帮我做计划"、"plan this"、"分析需求"、"拆分任务"、"制定实施方案"、"clarify requirements"、"create implementation plan"。'
+description: '从需求到实施的渐进式计划工作流。当用户提供需求描述/文档链接要求制定实施计划、澄清需求、拆分任务时触发。适用场景：需求澄清与阻塞未知数识别、需求文档生成、总体计划制定、详细任务拆分、分批派发子 agent 实施。支持 local / feishu / notion 存储（远端同步调用 doc-sync；代码实施调用 code-agent 主职责；计划 Prompt/验收调用 code-agent 附职责 planning-support）。触发短语："帮我做计划"、"plan this"、"分析需求"、"拆分任务"、"制定实施方案"、"clarify requirements"、"create implementation plan"。'
 ---
 
 # Plan Skill — 从需求到实施的渐进式计划工作流
@@ -23,7 +23,8 @@ description: '从需求到实施的渐进式计划工作流。当用户提供需
 
 跨 skill 调用：
 - 远端文档同步 → `/doc-sync`
-- 计划生成 / 代码实施的 Prompt、开发规范与验收 → `/code-agent`
+- 代码实施（主）→ `/code-agent`（加载其 `coding-rules.md` + `standards.md`）
+- 计划生成 Prompt / 计划文档验收（code-agent 附职责）→ `/code-agent`（仅加载 `planning-support.md`）
 
 ### `/doc-sync` 调用契约
 
@@ -164,7 +165,7 @@ Read `references/requirement-doc-template.md`，按模板结构填充：
 
 ### Step 4：生成总体计划
 
-> **L3 加载**：`references/overall-plan-template.md`；调用 `/code-agent`（场景：总体计划）
+> **L3 加载**：`references/overall-plan-template.md`；调用 `/code-agent`（场景：总体计划 → 仅 `planning-support.md`）
 
 #### 4.1 评估是否需要总体计划
 
@@ -175,22 +176,22 @@ Read `references/requirement-doc-template.md`，按模板结构填充：
 #### 4.2 派发 planning sub-agent 生成总体计划
 
 Read `references/overall-plan-template.md` 了解文档结构。
-调用 `/code-agent`，按其 `references/standards.md` 二.1 获取 planning sub-agent prompt 模板。
+调用 `/code-agent`，按其 `references/planning-support.md` 二.1 获取 planning sub-agent prompt 模板。
 
-按模板构造 prompt，包含：需求文档路径、澄清记录路径、架构约束。总体计划的第一性原理、阶段划分、最小可行性验证和极简输出规则统一以 `code-agent` standards 2.1 与 `overall-plan-template.md` 为准。
+按模板构造 prompt，包含：需求文档路径、澄清记录路径、架构约束。总体计划的第一性原理、阶段划分、最小可行性验证和极简输出规则统一以 `planning-support.md` 2.1 与 `overall-plan-template.md` 为准。
 
 使用 **Agent tool** 派发 `general-purpose` 类型子 agent：
 
 ```
 Agent tool:
   description: "Generate overall plan for <feature-name>"
-  prompt: <按 code-agent standards 二.1 模板构造>
+  prompt: <按 code-agent planning-support 二.1 模板构造>
   subagent_type: "general-purpose"
 ```
 
 #### 4.3 验证与 TODO 创建
 
-子 agent 完成后，调用 `/code-agent` 按 standards 5.1 节验收。
+子 agent 完成后，调用 `/code-agent` 按 `planning-support.md` 3.1 节验收。
 
 通过后将每个阶段的宏观任务写入总体计划文档中的 checkbox 列表；`feishu` / `notion` 时调用 `/doc-sync`（provider=当前存储，操作=`create` 或已有映射则 `update`，本地路径=总体计划文件；`notion` 须带目标 URL / ID）。
 
@@ -198,7 +199,7 @@ Agent tool:
 
 ### Step 5：生成详细计划
 
-> **L3 加载**：`references/plan-template.md`、项目架构约束文档；调用 `/code-agent`（场景：详细计划）
+> **L3 加载**：`references/plan-template.md`、项目架构约束文档；调用 `/code-agent`（场景：详细计划 → 仅 `planning-support.md`）
 
 #### 5.1 搜索架构约束
 
@@ -213,16 +214,16 @@ Agent tool:
 #### 5.2 派发 planning sub-agent 生成详细计划
 
 Read `references/plan-template.md` 了解文档结构。
-调用 `/code-agent`，按其 `references/standards.md` 二.2 获取 planning sub-agent prompt 模板。
+调用 `/code-agent`，按其 `references/planning-support.md` 二.2 获取 planning sub-agent prompt 模板。
 
-按模板构造 prompt，包含：需求文档路径、总体计划路径（如有）、澄清记录路径、架构约束。详细计划的任务粒度、第一性原理、最小可行性验证、图示、测试策略和“未来导向”约束统一以 `code-agent` standards 2.2 与 `plan-template.md` 为准。任务级可选项（目录/模块结构、数据结构、接口契约、逻辑概要、涉及文件、验证方式、不做）与触发规则以 `plan-template.md` 触发表及 `code-agent` standards 2.2 为准，不在此重复细则。
+按模板构造 prompt，包含：需求文档路径、总体计划路径（如有）、澄清记录路径、架构约束。详细计划的任务粒度、第一性原理、最小可行性验证、图示、测试策略和“未来导向”约束统一以 `planning-support.md` 2.2 与 `plan-template.md` 为准。任务级可选项与触发规则以 `plan-template.md` 触发表及 `planning-support.md` 2.2 为准，不在此重复细则。
 
 使用 **Agent tool** 派发 `general-purpose` 类型子 agent：
 
 ```
 Agent tool:
   description: "Generate detailed plan for <feature-name> Phase <N>"
-  prompt: <按 code-agent standards 二.2 模板构造>
+  prompt: <按 code-agent planning-support 二.2 模板构造>
   subagent_type: "general-purpose"
 ```
 
@@ -230,7 +231,7 @@ Agent tool:
 
 #### 5.3 验证与 TODO 创建
 
-子 agent 完成后，调用 `/code-agent` 按 standards 5.1 节验收。
+子 agent 完成后，调用 `/code-agent` 按 `planning-support.md` 3.1 节验收。
 
 通过后将每个叶子任务写入详细计划文档中的 checkbox 列表；后续执行状态直接回填文档，不依赖外部 TODO API。`feishu` / `notion` 时调用 `/doc-sync`（provider=当前存储，操作=`create` 或已有映射则 `update`，本地路径=详细计划文件；`notion` 须带目标 URL / ID）。
 
@@ -238,10 +239,10 @@ Agent tool:
 
 ### Step 6：询问派发实施
 
-> **L3 加载**：`references/dispatch-strategies.md`；调用 `/code-agent`（场景：代码实施）
+> **L3 加载**：`references/dispatch-strategies.md`；调用 `/code-agent`（场景：代码实施 → `coding-rules.md` + `standards.md`）
 
 Read `references/dispatch-strategies.md`，了解四种派发模式和选择决策树。
-调用 `/code-agent`，按其 standards 第三章获取 Code Agent Prompt 模板和开发规范。
+调用 `/code-agent`：先按其 `coding-rules.md` 约束实施行为，再按其 `standards.md` 第二章构造 Code Agent Prompt。
 
 基于当前就绪任务（依赖已满足）给出推荐方式：
 
@@ -256,15 +257,15 @@ Read `references/dispatch-strategies.md`，了解四种派发模式和选择决�
 
 **用户确认后才派发**，不自动派发。
 
-派发时使用 **Agent tool**（`general-purpose` 类型），按 `code-agent` standards 第三章构造 prompt，并按第五章与 `dispatch-strategies.md` 3.3 节验收；不通过则要求补充。
+派发时使用 **Agent tool**（`general-purpose` 类型），按 `code-agent` `standards.md` 二章构造 prompt（须内嵌遵守 `coding-rules.md`），并按 `standards.md` 三章与 `dispatch-strategies.md` 3.3 节验收；不通过则要求补充。
 
 ### Step 7：更新与循环
 
 #### 7.1 任务完成后更新
 
-每个子 agent 完成后，调用 `/code-agent` 按 standards 5.2 节验收：
+每个子 agent 完成后，调用 `/code-agent` 按 `standards.md` 3.1 节验收（含四问结论与落点检查）：
 - 验收标准逐条达成 → 标记 `[x]`
-- 注释/测试/风格不通过 → 要求补充后重新提交
+- 落点/注释/测试/风格不通过 → 要求补充后重新提交
 
 通过后：
 1. 更新详细计划文档：标记完成项 `[x]`
@@ -308,7 +309,7 @@ Read `references/dispatch-strategies.md`，了解四种派发模式和选择决�
 4. **计划文档可追溯**：每个文档关联上一步文档，形成完整链
 5. **进度以文档为准**：计划文档中的 checkbox 是默认进度事实源
 6. **架构约束优先**：未找到约束文档时主动询问
-7. **计划与实施规范外置**：开发规范、Prompt 模板、验收标准以 `/code-agent` 为准；计划文档结构以各 template 为准
+7. **计划与实施规范外置**：代码实施规则以 `/code-agent` 的 `coding-rules.md` + `standards.md` 为准；计划生成 Prompt/验收以其附职责 `planning-support.md` 为准；计划文档结构以各 template 为准
 8. **子 agent 不自动派发**：必须用户确认
 9. **进度持久化**：所有文档和进度记录写入文件系统，支持中断恢复
 10. **每步确认**：默认只在路径切换、生成结果落盘、派发实施、继续下一批次时确认；Fast Path 不强制逐步确认
@@ -337,7 +338,7 @@ Read `references/dispatch-strategies.md`，了解四种派发模式和选择决�
 
 - 支持 `local` / `feishu` / `notion` 三种存储；远端同步由 `/doc-sync` 负责，`notion` 模式默认只覆盖文档内容，不保证复刻 UI 模板或项目结构
 - 需求澄清最多 10 轮
-- 子 agent 实施质量取决于 agent 对代码库的理解；Prompt/规范/验收由 `/code-agent` 提供
+- 子 agent 实施质量取决于是否遵守 `/code-agent` 的 `coding-rules.md`（落点/复用/风格）与 `standards.md` 验收
 - 不替代正式 PRD 流程或项目管理工具
 - 伪代码仅描述逻辑，不保证可直接编译/运行
 - 飞书文档富文本（表格、图片）在 CLI 读写中可能丢失格式
