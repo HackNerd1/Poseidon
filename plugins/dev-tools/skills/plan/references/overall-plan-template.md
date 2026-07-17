@@ -1,6 +1,6 @@
 # 总体计划文档模板
 
-> 此文档为 plan skill 的 L3 参考文档，在 SKILL.md Step 3 中按需加载。
+> 此文档为 plan skill 的 L3 参考文档，在 SKILL.md Step 4 中按需加载。
 > 定义了宏观总体计划的文档结构，用于跨阶段跟踪。
 
 ---

@@ -1,6 +1,6 @@
 # 子 Agent 派发策略
 
-> 此文档为 plan skill 的 L3 参考文档，在 SKILL.md Step 5 中按需加载。
+> 此文档为 plan skill 的 L3 参考文档，在 SKILL.md Step 6 中按需加载。
 > 定义了将详细计划中的任务派发给子 agent 实施的策略和模式。
 
 ---
@@ -153,7 +153,7 @@ Implement LOGIN-P1-01: Create user model
 
 ### 3.3 结果验证与开发规范
 
-子 agent 完成后的验收标准见 **`references/code-execution-standards.md`** 第五章。派发 Prompt 中的开发规范模板见该文档第三章。
+子 agent 完成后的验收标准见 **`/code-agent`** → `references/standards.md` 第五章。派发 Prompt 中的开发规范模板见该文档第三章。
 
 核心要求摘要：
 - 验收标准逐条达成
@@ -174,13 +174,13 @@ Implement LOGIN-P1-01: Create user model
 
 ## 四、开发规范与 Prompt 模板
 
-> **已迁移至** `references/code-execution-standards.md`
+> **已迁移至** `/code-agent` skill（`references/standards.md`）
 >
 > 该文档包含完整的：
 > - Agent 类型选择（当前默认统一为 general-purpose sub-agent）
-> - Planning sub-agent prompt 模板（Step 3/4 生成计划用）
-> - Code Agent Prompt 模板（Step 5 实施代码用）
+> - Planning sub-agent prompt 模板（生成计划用）
+> - Code Agent Prompt 模板（实施代码用）
 > - 四类开发规范详解（注释、测试、约束、搜索）
 > - Agent 结果验收标准
 
-派发子 agent 时，请 Read `references/code-execution-standards.md` 获取最新模板和规范。
+派发子 agent 时，请调用 `/code-agent` 获取最新模板和规范。
