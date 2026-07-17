@@ -190,7 +190,7 @@ Agent tool:
 Read `references/plan-template.md` 了解文档结构。
 Read `references/code-execution-standards.md` 第二章获取 planning sub-agent prompt 模板。
 
-按模板构造 prompt，包含：需求文档路径、总体计划路径（如有）、澄清记录路径、架构约束。详细计划的任务粒度、第一性原理、最小可行性验证、图示、测试策略和“未来导向”约束统一以 `code-execution-standards.md` 2.2 与 `plan-template.md` 为准。
+按模板构造 prompt，包含：需求文档路径、总体计划路径（如有）、澄清记录路径、架构约束。详细计划的任务粒度、第一性原理、最小可行性验证、图示、测试策略和“未来导向”约束统一以 `code-execution-standards.md` 2.2 与 `plan-template.md` 为准。任务级可选项（目录/模块结构、数据结构、接口契约、逻辑概要、涉及文件、验证方式、不做）与触发规则以 `plan-template.md` 触发表及 `code-execution-standards.md` 2.2 为准，不在此重复细则。
 
 使用 **Agent tool** 派发 `general-purpose` 类型子 agent：
 
