@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from adapters import claude, codex
+from adapters import claude, codex, cursor
 from platform_matrix import implemented_platforms
 
 
@@ -400,6 +400,10 @@ def validate_claude(root: Path) -> list[str]:
     return errors
 
 
+def validate_cursor(root: Path) -> list[str]:
+    return cursor.validate(root, scope="repo")
+
+
 def parse_args(argv: list[str], supported_platforms: tuple[str, ...]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate Poseidon platform packaging.")
     parser.add_argument("--platform", choices=supported_platforms, help="Platform to validate.")
@@ -412,7 +416,7 @@ def main(argv: list[str] | None = None) -> int:
     supported_platforms = implemented_platforms(root)
     args = parse_args(list(sys.argv[1:] if argv is None else argv), supported_platforms)
     if not args.platform and not args.all:
-        raise SystemExit("Specify --platform codex, --platform claude, or --all.")
+        raise SystemExit("Specify --platform, --all.")
 
     errors = validate_skills(root)
     platforms = supported_platforms if args.all else (args.platform,)
@@ -421,6 +425,8 @@ def main(argv: list[str] | None = None) -> int:
             errors.extend(validate_codex(root))
         elif platform == "claude":
             errors.extend(validate_claude(root))
+        elif platform == "cursor":
+            errors.extend(validate_cursor(root))
 
     if errors:
         print("Validation failed:")

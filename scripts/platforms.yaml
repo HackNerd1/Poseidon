@@ -22,8 +22,9 @@ platforms:
     install_mode: plugin
 
   cursor:
-    implemented: false
+    implemented: true
+    user_skill_path: "~/.cursor/skills"
     project_skill_path: ".cursor/skills"
     supports_plugin: false
-    adapter: mdc
+    adapter: skills
     install_mode: copy
