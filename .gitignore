@@ -1,5 +1,6 @@
 .claude/
 .codex/
+.cursor/skills/
 .agents/plugins/marketplace.json
 .claude-plugin/marketplace.json
 .Poseidon/

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from adapters import claude, codex
+from adapters import claude, codex, cursor
 from platform_matrix import implemented_platforms
 
 
@@ -18,6 +18,7 @@ SCOPES = ("repo", "user")
 SUPPORTED_SCOPES = {
     "codex": ("repo",),
     "claude": ("repo",),
+    "cursor": ("repo", "user"),
 }
 
 
@@ -34,6 +35,13 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def display_path(root: Path, path: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
 def parse_args(argv: list[str], supported_platforms: tuple[str, ...]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Install Poseidon plugins for agent platforms.")
     parser.add_argument("--interactive", action="store_true", help="Run the interactive CLI.")
@@ -43,7 +51,10 @@ def parse_args(argv: list[str], supported_platforms: tuple[str, ...]) -> argpars
         "--scope",
         choices=SCOPES,
         default="repo",
-        help="Package generation scope. Codex and Claude currently support repo only.",
+        help=(
+            "Install scope. Codex/Claude support repo only; "
+            "Cursor supports repo (.cursor/skills) and user (~/.cursor/skills)."
+        ),
     )
     parser.add_argument("--plugin", default="all", help="Plugin name, or 'all'.")
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without writing files.")
@@ -51,7 +62,10 @@ def parse_args(argv: list[str], supported_platforms: tuple[str, ...]) -> argpars
     parser.add_argument(
         "--generate-only",
         action="store_true",
-        help="Only write local manifest and marketplace files; do not register, install, or enable plugins.",
+        help=(
+            "Only write local package/manifest files; do not register, install, or enable "
+            "plugins via platform CLIs. Cursor still copies skills (copy is the install)."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -85,15 +99,27 @@ def interactive_args(root: Path, supported_platforms: tuple[str, ...]) -> argpar
     plugin_choices = [("all", "All plugins")]
     plugin_choices.extend((path.name, path.name) for path in codex.discover_plugin_dirs(root))
     plugin = prompt_choice("Select plugin", plugin_choices, "all")
+
+    scope = "repo"
+    if "cursor" in selected_platforms:
+        scope_choices = [
+            ("repo", "Repo (.cursor/skills)"),
+            ("user", "User (~/.cursor/skills)"),
+        ]
+        # When installing multiple platforms, keep Codex/Claude on repo and only
+        # offer Cursor scope when Cursor is the sole target.
+        if selected_platforms == ["cursor"]:
+            scope = prompt_choice("Select Cursor install scope", scope_choices, "repo")
+
     mode = prompt_choice(
         "Select operation mode",
         [("dry-run", "Dry run"), ("apply", "Apply changes")],
         "dry-run",
     )
-    enable_codex = "yes"
-    if platform in {"codex", "all"}:
-        enable_codex = prompt_choice(
-            "Install and enable Codex plugins after generating files",
+    enable_cli = "yes"
+    if any(name in {"codex", "claude"} for name in selected_platforms):
+        enable_cli = prompt_choice(
+            "Install/enable plugins via platform CLI after generating files",
             [("yes", "Yes"), ("no", "No, generate files only")],
             "yes",
         )
@@ -101,11 +127,11 @@ def interactive_args(root: Path, supported_platforms: tuple[str, ...]) -> argpar
         interactive=True,
         platform=None if platform == "all" else platform,
         all=platform == "all",
-        scope="repo",
+        scope=scope,
         plugin=plugin,
         dry_run=mode == "dry-run",
         yes=False,
-        generate_only=enable_codex == "no",
+        generate_only=enable_cli == "no",
     )
 
 
@@ -122,7 +148,7 @@ def validate_scope(platform: str, scope: str) -> None:
         supported = ", ".join(SUPPORTED_SCOPES.get(platform, SCOPES))
         raise ValueError(
             f"{platform.capitalize()} does not support --scope {scope}; "
-            f"supported scope: {supported}. Use --scope repo for generation and install."
+            f"supported scope: {supported}."
         )
 
 
@@ -218,6 +244,34 @@ def claude_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> lis
     return operations
 
 
+def cursor_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list[Operation]:
+    del generate_only  # Cursor has no separate CLI enable step; copy is the install.
+    validate_scope("cursor", scope)
+
+    plugin_dirs = cursor.select_plugin_dirs(root, plugin)
+    operations: list[Operation] = []
+    for skill_dir in cursor.discover_skill_dirs(plugin_dirs):
+        operations.append(
+            Operation(
+                "sync-cursor",
+                cursor.skill_target_path(root, scope, skill_dir),
+                source=skill_dir,
+            )
+        )
+    return operations
+
+
+def effective_scope(platform: str, scope: str, *, multi_platform: bool) -> str:
+    supported = SUPPORTED_SCOPES.get(platform, SCOPES)
+    if scope in supported:
+        return scope
+    if multi_platform and "repo" in supported:
+        # --all with Cursor user scope still installs Codex/Claude at repo scope.
+        return "repo"
+    validate_scope(platform, scope)
+    return scope
+
+
 def build_plan(
     root: Path,
     platforms: list[str],
@@ -226,11 +280,15 @@ def build_plan(
     generate_only: bool,
 ) -> list[Operation]:
     operations: list[Operation] = []
+    multi_platform = len(platforms) > 1
     for platform in platforms:
+        platform_scope = effective_scope(platform, scope, multi_platform=multi_platform)
         if platform == "codex":
-            operations.extend(codex_plan(root, scope, plugin, generate_only))
+            operations.extend(codex_plan(root, platform_scope, plugin, generate_only))
         elif platform == "claude":
-            operations.extend(claude_plan(root, scope, plugin, generate_only))
+            operations.extend(claude_plan(root, platform_scope, plugin, generate_only))
+        elif platform == "cursor":
+            operations.extend(cursor_plan(root, platform_scope, plugin, generate_only))
     return operations
 
 
@@ -246,11 +304,11 @@ def print_plan(root: Path, operations: list[Operation]) -> None:
             else:
                 print(f"  - {operation.action}")
         else:
-            rel = operation.path.relative_to(root)
+            path_text = display_path(root, operation.path)
             if operation.source:
-                print(f"  - {operation.action} {operation.source.relative_to(root)} -> {rel}")
+                print(f"  - {operation.action} {display_path(root, operation.source)} -> {path_text}")
             else:
-                print(f"  - {operation.action} {rel}")
+                print(f"  - {operation.action} {path_text}")
 
 
 def has_failures(operations: list[Operation]) -> bool:
@@ -272,6 +330,9 @@ def apply_operations(operations: list[Operation]) -> None:
             continue
         if operation.action == "sync-claude" and operation.source is not None:
             claude.copy_claude_package(repo_root(), operation.source)
+            continue
+        if operation.action == "sync-cursor" and operation.source is not None and operation.path is not None:
+            cursor.copy_skill(operation.source, operation.path)
             continue
         if operation.command:
             result = subprocess.run(operation.command, check=True, text=True, capture_output=True)
@@ -319,7 +380,7 @@ def main(argv: list[str] | None = None) -> int:
     print("\nApplied:")
     for operation in write_operations:
         if operation.path is not None:
-            print(f"  - {operation.path.relative_to(root)}")
+            print(f"  - {display_path(root, operation.path)}")
         elif operation.command:
             print(f"  - {' '.join(operation.command)}")
     return 0

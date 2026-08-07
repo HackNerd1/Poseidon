@@ -1,6 +1,6 @@
 # Notion 文档存储工作流
 
-> 此文档为 plan skill 的 L3 参考文档，当用户选择 `notion` 作为文档存储方式时按需加载。
+> 此文档为 `doc-sync` skill 的 L3 参考文档，当 provider 为 `notion` 时按需加载。
 > 仅覆盖 Notion 文档内容的创建、更新、读取；不负责模板探测、项目模板复刻或数据库结构管理。
 
 ---
@@ -40,7 +40,7 @@ Notion 模式下，用户必须显式提供以下之一：
 
 ### 2.2 本地目录
 
-所有 Notion 文档的本地副本存储在 `.Poseidon/notion/` 下：
+所有 Notion 文档的本地副本存储在 `.Poseidon/notion/` 下。通用约定：`<slug>-<doc-type>.md`。下列为 **plan skill 常用文件名**（其他调用方可自定义 doc-type）：
 
 ```
 .Poseidon/notion/
@@ -48,6 +48,7 @@ Notion 模式下，用户必须显式提供以下之一：
 ├── <feature-slug>-requirement.md
 ├── <feature-slug>-overall-plan.md
 ├── <feature-slug>-detailed-plan-p1.md
+├── <feature-slug>-micro-plan.md
 └── doc-map.json
 ```
 
@@ -208,7 +209,12 @@ Step C: 后续所有修改先针对本地文件
 which ntn 2>/dev/null && ntn --version || echo "NTN_MISSING"
 ```
 
-CLI 可用但未登录时：
+**CLI 不可用时：**
+> Notion CLI（`ntn`）未安装或不可用。将降级为本地文件存储（`docs/requirements/`），所有文档将只保存在本地。你可以稍后安装 `ntn` 后再手动同步。
+>
+> Notion CLI 安装指南：<根据实际情况提供>
+
+**CLI 可用但未登录时：**
 
 ```bash
 ntn doctor
@@ -222,7 +228,7 @@ ntn login
 | 场景 | 处理方式 |
 |------|---------|
 | 用户未提供 URL / ID | 直接提示用户补充，不自动猜测 |
-| `ntn` 不可用或未登录 | 降级为本地文件存储 |
+| `ntn` 不可用或未登录 | 降级为本地文件存储（`docs/requirements/`），保留已写本地副本 |
 | page_id / database_id 无效 | 提示用户重新提供正确标识 |
 | database 标题字段名不明确 | 先确认字段名，再创建；不盲写 |
 | 页面已被他人改写 | 先拉取回本地 diff，再决定覆盖 |
@@ -232,8 +238,8 @@ ntn login
 
 ## 八、使用说明
 
-此文档在以下场景被加载：
-- **Step 0**：用户选择 `notion` 存储方式 → 加载一、二、六章
-- **创建 Notion 文档时** → 加载三.1 / 三.2 / 四.1 / 五章
-- **更新已有 Notion 页面时** → 加载三.3 / 四.2 / 五章
-- **读取已有 Notion 页面时** → 加载三.4 / 四.3 / 五章
+此文档由 `doc-sync` skill 在 provider=`notion` 时按需加载：
+- **init / check** → 加载一、二、六章
+- **create** → 加载三.1 / 三.2 / 四.1 / 五章
+- **update** → 加载三.3 / 四.2 / 五章
+- **pull** → 加载三.4 / 四.3 / 五章

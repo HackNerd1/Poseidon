@@ -1,6 +1,6 @@
 # 飞书文档存储工作流
 
-> 此文档为 plan skill 的 L3 参考文档，当用户选择 `feishu` 作为文档存储方式时在对应 Step 中按需加载。
+> 此文档为 `doc-sync` skill 的 L3 参考文档，当 provider 为 `feishu` 时按需加载。
 > 定义了飞书文档的本地优先（Local-First）同步模式。
 
 ---
@@ -25,14 +25,15 @@
 
 ### 2.1 本地临时目录
 
-所有飞书文档的本地副本存储在 `.Poseidon/feishu/` 下：
+所有飞书文档的本地副本存储在 `.Poseidon/feishu/` 下。通用约定：`<slug>-<doc-type>.md`。下列为 **plan skill 常用文件名**（其他调用方可自定义 doc-type）：
 
 ```
 .Poseidon/feishu/
-├── <feature-slug>-clarification.md        # 需求澄清记录
-├── <feature-slug>-requirement.md          # 需求文档
-├── <feature-slug>-overall-plan.md         # 总体计划
-├── <feature-slug>-detailed-plan-p1.md     # 详细计划 Phase 1
+├── <feature-slug>-clarification.md        # 需求澄清记录（plan）
+├── <feature-slug>-requirement.md          # 需求文档（plan）
+├── <feature-slug>-overall-plan.md         # 总体计划（plan）
+├── <feature-slug>-detailed-plan-p1.md     # 详细计划 Phase 1（plan）
+├── <feature-slug>-micro-plan.md           # Fast Path 简化计划（plan）
 └── ...
 ```
 
@@ -237,8 +238,8 @@ feishu auth login
 
 ## 八、使用说明
 
-此文档在以下场景被加载：
-- **Step 0**：用户选择 `feishu` 存储方式 → 加载一、二、五章（初始化和检查）
-- **Step 1.5 / Step 2 / Step 3 / Step 4**：生成文档并写入飞书 → 加载第三章对应节 + 第四章（映射表维护）
-- **Step 6**：更新计划文档 → 加载三.2 节（修改文档流程）
-- **任何需要读取已有飞书文档时** → 加载三.3 节（获取文档流程）
+此文档由 `doc-sync` skill 在 provider=`feishu` 时按需加载：
+- **init / check** → 加载一、二、五章
+- **create** → 加载三.1 + 第四章
+- **update** → 加载三.2 + 第四章
+- **pull** → 加载三.3 + 第四章

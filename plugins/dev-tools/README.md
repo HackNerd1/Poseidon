@@ -9,7 +9,9 @@
 | `debug` | 诊断式 Debug 工作流 | 导入日志分析 Bug、白屏/渲染异常、数据不符预期等运行时问题排查 |
 | `code-review` | 结构化代码审查 | 审查暂存/未暂存变更、文档-代码一致性、架构合规检查、PR 审查 |
 | `pr` | 渐进式 PR/MR 创建 | 自动检测仓库平台（GitHub/GitLab/Gitea），本地起草 PR 描述，支持流程图/场景视图/手工测试用例，用户确认后通过 gh/glab/tea 提交 |
-| `plan` | 渐进式需求分析与实施计划 | 从模糊需求到可执行计划的完整工作流：需求澄清（100分制评分）→ 需求文档生成 → 总体计划（分阶段）→ 详细任务拆分（TODO跟踪）→ 分批派发子agent实施 |
+| `plan` | 渐进式需求分析与实施计划 | 从模糊需求到可执行计划：澄清 → 需求文档 → 总体/详细计划 → 派发实施；远端同步走 `doc-sync`，Prompt/规范/验收走 `code-agent` |
+| `doc-sync` | 本地 Markdown ↔ 飞书/Notion 同步 | 选择 feishu/notion 存储、创建/更新/拉取远端文档、维护 doc-map；可被 `plan` 通过 `/doc-sync` 调用 |
+| `code-agent` | 代码实施（主）+ 计划生成支持（附） | 第一性原理定位落点/复用封装、对齐现有风格后实现并验收；附带为 plan 提供 planning prompt；可被 `/code-agent` 直接或由 plan 调用 |
 | `extra-knowledge` | 代码仓库知识提取 | 分析代码仓库中值得学习的设计模式和工程思路：项目扫描与模块映射 → 并行模块深度分析 → 输出结构化知识报告到 `.Poseidon/extra-knowledge/` |
 
 ## Hooks
