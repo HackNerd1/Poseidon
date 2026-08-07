@@ -33,10 +33,23 @@ def select_plugin_dirs(repo_root: Path, plugin: str | None = None) -> list[Path]
     if plugin in (None, "", "all"):
         return plugin_dirs
 
-    selected = [path for path in plugin_dirs if path.name == plugin]
-    if not selected:
+    names = [part.strip() for part in plugin.split(",") if part.strip()]
+    if not names or "all" in names:
+        return plugin_dirs
+
+    by_name = {path.name: path for path in plugin_dirs}
+    selected: list[Path] = []
+    unknown: list[str] = []
+    for name in names:
+        path = by_name.get(name)
+        if path is None:
+            unknown.append(name)
+            continue
+        if path not in selected:
+            selected.append(path)
+    if unknown:
         known = ", ".join(path.name for path in plugin_dirs) or "(none)"
-        raise ValueError(f"Unknown plugin '{plugin}'. Known plugins: {known}")
+        raise ValueError(f"Unknown plugin(s): {', '.join(unknown)}. Known plugins: {known}")
     return selected
 
 

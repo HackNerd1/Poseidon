@@ -6,59 +6,74 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from adapters import claude, codex, cursor
 from platform_matrix import implemented_platforms
+from shared import (
+    SCOPES,
+    STYLE,
+    Operation,
+    describe_operation,
+    effective_scope,
+    interactive_fill,
+    operation_platform,
+    print_done,
+    print_plan,
+    print_section,
+    repo_root,
+    summarize_command_output,
+    target_platforms,
+    validate_scope,
+    wants_interactive,
+)
 
 
-SCOPES = ("repo", "user")
-SUPPORTED_SCOPES = {
-    "codex": ("repo",),
-    "claude": ("repo",),
-    "cursor": ("repo", "user"),
-}
-
-
-@dataclass(frozen=True)
-class Operation:
-    action: str
-    path: Path | None
-    content: dict[str, Any] | None = None
-    command: list[str] | None = None
-    source: Path | None = None
-
-
-def repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
-def display_path(root: Path, path: Path) -> str:
-    try:
-        return str(path.relative_to(root))
-    except ValueError:
-        return str(path)
+_INTERACTIVE_OK_FLAGS = frozenset(
+    {
+        "--interactive",
+        "--dry-run",
+        "--generate-only",
+        "--yes",
+        "--scope",
+        "--plugin",
+    }
+)
 
 
 def parse_args(argv: list[str], supported_platforms: tuple[str, ...]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Install Poseidon plugins for agent platforms.")
     parser.add_argument("--interactive", action="store_true", help="Run the interactive CLI.")
-    parser.add_argument("--platform", choices=supported_platforms, help="Target platform.")
+    parser.add_argument(
+        "--platform",
+        default=None,
+        help=(
+            "Target platform, comma-separated list "
+            f"({', '.join(supported_platforms)}), or use --all."
+        ),
+    )
     parser.add_argument("--all", action="store_true", help="Target all supported platforms.")
     parser.add_argument(
         "--scope",
         choices=SCOPES,
-        default="repo",
+        default=None,
         help=(
             "Install scope. Codex/Claude support repo only; "
-            "Cursor supports repo (.cursor/skills) and user (~/.cursor/skills)."
+            "Cursor supports repo (.cursor/skills) and user (~/.cursor/skills). "
+            "Default: repo."
         ),
     )
-    parser.add_argument("--plugin", default="all", help="Plugin name, or 'all'.")
+    parser.add_argument(
+        "--plugin",
+        default=None,
+        help="Plugin name, comma-separated list, or 'all'. Default: all.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without writing files.")
-    parser.add_argument("--yes", action="store_true", help="Apply without confirmation.")
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Accepted for compatibility; confirmation is no longer prompted.",
+    )
     parser.add_argument(
         "--generate-only",
         action="store_true",
@@ -68,88 +83,6 @@ def parse_args(argv: list[str], supported_platforms: tuple[str, ...]) -> argpars
         ),
     )
     return parser.parse_args(argv)
-
-
-def prompt_choice(label: str, choices: list[tuple[str, str]], default: str) -> str:
-    print(f"\n{label}")
-    for index, (value, title) in enumerate(choices, start=1):
-        suffix = " (default)" if value == default else ""
-        print(f"  {index}. {title}{suffix}")
-    raw = input("> ").strip()
-    if not raw:
-        return default
-    if raw.isdigit() and 1 <= int(raw) <= len(choices):
-        return choices[int(raw) - 1][0]
-    values = {value for value, _title in choices}
-    if raw in values:
-        return raw
-    raise SystemExit(f"Invalid choice: {raw}")
-
-
-def interactive_args(root: Path, supported_platforms: tuple[str, ...]) -> argparse.Namespace:
-    print("Poseidon Installer")
-    platform_choices = [(platform, platform.capitalize()) for platform in supported_platforms]
-    platform_choices.append(("all", "All supported platforms"))
-    platform = prompt_choice(
-        "Select target platform",
-        platform_choices,
-        "codex",
-    )
-    selected_platforms = list(supported_platforms) if platform == "all" else [platform]
-    plugin_choices = [("all", "All plugins")]
-    plugin_choices.extend((path.name, path.name) for path in codex.discover_plugin_dirs(root))
-    plugin = prompt_choice("Select plugin", plugin_choices, "all")
-
-    scope = "repo"
-    if "cursor" in selected_platforms:
-        scope_choices = [
-            ("repo", "Repo (.cursor/skills)"),
-            ("user", "User (~/.cursor/skills)"),
-        ]
-        # When installing multiple platforms, keep Codex/Claude on repo and only
-        # offer Cursor scope when Cursor is the sole target.
-        if selected_platforms == ["cursor"]:
-            scope = prompt_choice("Select Cursor install scope", scope_choices, "repo")
-
-    mode = prompt_choice(
-        "Select operation mode",
-        [("dry-run", "Dry run"), ("apply", "Apply changes")],
-        "dry-run",
-    )
-    enable_cli = "yes"
-    if any(name in {"codex", "claude"} for name in selected_platforms):
-        enable_cli = prompt_choice(
-            "Install/enable plugins via platform CLI after generating files",
-            [("yes", "Yes"), ("no", "No, generate files only")],
-            "yes",
-        )
-    return argparse.Namespace(
-        interactive=True,
-        platform=None if platform == "all" else platform,
-        all=platform == "all",
-        scope=scope,
-        plugin=plugin,
-        dry_run=mode == "dry-run",
-        yes=False,
-        generate_only=enable_cli == "no",
-    )
-
-
-def target_platforms(args: argparse.Namespace) -> list[str]:
-    if args.all:
-        return list(args.supported_platforms)
-    if args.platform:
-        return [args.platform]
-    raise SystemExit("Specify --platform, --all, or run with no arguments for interactive mode.")
-
-
-def validate_scope(platform: str, scope: str) -> None:
-    if scope not in SUPPORTED_SCOPES.get(platform, SCOPES):
-        supported = ", ".join(SUPPORTED_SCOPES.get(platform, SCOPES))
-        raise ValueError(
-            f"{platform.capitalize()} does not support --scope {scope}; "
-            f"supported scope: {supported}."
-        )
 
 
 def codex_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list[Operation]:
@@ -261,17 +194,6 @@ def cursor_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> lis
     return operations
 
 
-def effective_scope(platform: str, scope: str, *, multi_platform: bool) -> str:
-    supported = SUPPORTED_SCOPES.get(platform, SCOPES)
-    if scope in supported:
-        return scope
-    if multi_platform and "repo" in supported:
-        # --all with Cursor user scope still installs Codex/Claude at repo scope.
-        return "repo"
-    validate_scope(platform, scope)
-    return scope
-
-
 def build_plan(
     root: Path,
     platforms: list[str],
@@ -292,71 +214,76 @@ def build_plan(
     return operations
 
 
-def print_plan(root: Path, operations: list[Operation]) -> None:
-    print("\nPlan:")
-    if not operations:
-        print("  - No operations")
-        return
-    for operation in operations:
-        if operation.path is None:
-            if operation.command:
-                print(f"  - {operation.action} {' '.join(operation.command)}")
-            else:
-                print(f"  - {operation.action}")
-        else:
-            path_text = display_path(root, operation.path)
-            if operation.source:
-                print(f"  - {operation.action} {display_path(root, operation.source)} -> {path_text}")
-            else:
-                print(f"  - {operation.action} {path_text}")
-
-
 def has_failures(operations: list[Operation]) -> bool:
     return any(operation.action.startswith("Claude validation failed:") for operation in operations)
 
 
-def confirm() -> bool:
-    answer = input("\nProceed? yes/no: ").strip().lower()
-    return answer in {"y", "yes"}
+def _run_operation(root: Path, operation: Operation) -> str | None:
+    if operation.path is not None and operation.content is not None:
+        codex.write_json(operation.path, operation.content)
+        return None
+    if operation.action == "sync" and operation.source is not None:
+        codex.copy_codex_package(root, operation.source)
+        return None
+    if operation.action == "sync-claude" and operation.source is not None:
+        claude.copy_claude_package(root, operation.source)
+        return None
+    if operation.action == "sync-cursor" and operation.source is not None and operation.path is not None:
+        cursor.copy_skill(operation.source, operation.path)
+        return None
+    if operation.command:
+        result = subprocess.run(operation.command, check=False, text=True, capture_output=True)
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+            raise RuntimeError(detail)
+        return summarize_command_output(result.stdout, result.stderr)
+    return None
 
 
-def apply_operations(operations: list[Operation]) -> None:
+def apply_operations(root: Path, operations: list[Operation]) -> None:
+    print_section("Applying")
+    current_platform: str | None = None
     for operation in operations:
-        if operation.path is not None and operation.content is not None:
-            codex.write_json(operation.path, operation.content)
-            continue
-        if operation.action == "sync" and operation.source is not None:
-            codex.copy_codex_package(repo_root(), operation.source)
-            continue
-        if operation.action == "sync-claude" and operation.source is not None:
-            claude.copy_claude_package(repo_root(), operation.source)
-            continue
-        if operation.action == "sync-cursor" and operation.source is not None and operation.path is not None:
-            cursor.copy_skill(operation.source, operation.path)
-            continue
-        if operation.command:
-            result = subprocess.run(operation.command, check=True, text=True, capture_output=True)
-            output = result.stdout.strip()
-            if output:
-                print(output)
+        platform = operation_platform(operation)
+        if platform != current_platform:
+            current_platform = platform
+            print(STYLE.paint(platform.capitalize(), STYLE.magenta, STYLE.bold))
+
+        label = describe_operation(root, operation)
+        try:
+            detail = _run_operation(root, operation)
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+            print(f"  {STYLE.paint('✖', STYLE.red)} {label}")
+            print(f"    {STYLE.paint(str(exc), STYLE.red)}")
+            raise SystemExit(1) from exc
+
+        print(f"  {STYLE.paint('✔', STYLE.green)} {label}")
+        if detail:
+            print(f"    {STYLE.paint(detail, STYLE.dim)}")
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     root = repo_root()
     supported_platforms = implemented_platforms(root)
-    args = (
-        interactive_args(root, supported_platforms)
-        if not argv or "--interactive" in argv
-        else parse_args(argv, supported_platforms)
-    )
+    args = parse_args(argv, supported_platforms)
+    if wants_interactive(argv, args, _INTERACTIVE_OK_FLAGS):
+        try:
+            args = interactive_fill(root, supported_platforms, args)
+        except KeyboardInterrupt:
+            print(f"\n{STYLE.paint('Aborted.', STYLE.dim)}")
+            return 1
+    if args.scope is None:
+        args.scope = "repo"
+    if args.plugin is None:
+        args.plugin = "all"
     args.supported_platforms = supported_platforms
 
     platforms = target_platforms(args)
     try:
         operations = build_plan(root, platforms, args.scope, args.plugin, args.generate_only)
     except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(f"{STYLE.paint('error:', STYLE.red)} {exc}", file=sys.stderr)
         return 2
 
     print_plan(root, operations)
@@ -364,25 +291,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if args.dry_run:
-        print("\nDry run only; no files written.")
+        print(f"\n{STYLE.paint('Dry run only; no files written.', STYLE.yellow)}")
         return 0
 
     write_operations = [operation for operation in operations if operation.path is not None or operation.command]
     if not write_operations:
-        print("\nNo file writes to apply.")
+        print(f"\n{STYLE.paint('No file writes to apply.', STYLE.dim)}")
         return 0
 
-    if not args.yes and not confirm():
-        print("Aborted.")
-        return 1
-
-    apply_operations(write_operations)
-    print("\nApplied:")
-    for operation in write_operations:
-        if operation.path is not None:
-            print(f"  - {display_path(root, operation.path)}")
-        elif operation.command:
-            print(f"  - {' '.join(operation.command)}")
+    apply_operations(root, write_operations)
+    print_done(write_operations)
     return 0
 
 
