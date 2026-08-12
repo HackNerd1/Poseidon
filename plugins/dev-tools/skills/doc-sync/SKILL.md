@@ -3,11 +3,11 @@ name: doc-sync
 description: '本地 Markdown 与远端文档同步（飞书 / Notion）。当用户选择 feishu 或 notion 作为文档存储、需要创建/更新/拉取远端文档、维护 doc-map、或 plan skill 需要远端同步时触发。触发短语："同步飞书文档"、"同步 Notion"、"doc-sync"、"推送到飞书"、"ntn pages"。'
 ---
 
-# Doc-Sync Skill — 本地优先的远端文档同步
+# Doc-Sync Skill — 远端文档同步
 
 ## 概述
 
-将本地 Markdown 与飞书 / Notion 文档双向同步。核心原则：**本地优先、显式目标、按 provider 加载细则**。
+将本地 Markdown 与飞书 / Notion 文档双向同步。核心原则：**同步方向由用户指定、显式目标、按 provider 加载细则**。方向（本地优先 / 远端优先）或不明确时先询问。
 
 本 skill 可被 `plan` 等其他 skill 通过 `/doc-sync` 或 Skill tool 调用；也可由用户直接触发。
 
@@ -16,7 +16,8 @@ description: '本地 Markdown 与远端文档同步（飞书 / Notion）。当�
 1. **provider**（必需）：`feishu` 或 `notion`
 2. **操作**（必需）：`init` | `create` | `update` | `pull` | `check`
 3. **本地路径 / 文件名**（按操作需要）
-4. **远端目标**（按 provider）：
+4. **同步方向**（可选）：`local-first`（推送）或 `remote-first`（拉取）；未指定且无法从操作推断时先询问
+5. **远端目标**（按 provider）：
    - `feishu`：文档 / 文件夹 token（可延后到首次推送时收集）
    - `notion`：**必须**由用户显式提供页面或 database 的 URL / ID
 
@@ -35,7 +36,7 @@ description: '本地 Markdown 与远端文档同步（飞书 / Notion）。当�
 
 按对应 reference 的「可用性检查」章节验证 CLI：
 
-- `feishu` → `which feishu`；不可用则告知并建议降级 `local`
+- `feishu` → `which lark-cli`；不可用则告知并建议降级 `local`
 - `notion` → `which ntn`；不可用则告知并建议降级 `local`
 
 ### Step 2：按操作执行
@@ -43,9 +44,9 @@ description: '本地 Markdown 与远端文档同步（飞书 / Notion）。当�
 | 操作 | 行为 |
 |------|------|
 | `init` | 初始化本地目录与 `doc-map.json`（`.Poseidon/feishu/` 或 `.Poseidon/notion/`） |
-| `create` | 先写本地 Markdown，再推送远端，更新映射 |
-| `update` | 编辑本地副本后全量覆盖远端，更新映射 |
-| `pull` | 从远端拉取覆盖本地，再 Read 本地文件 |
+| `create` | 写本地 Markdown 并推送远端，更新映射 |
+| `update` | 按用户指定推送：全量覆盖或局部 patch；方向不明时先询问 |
+| `pull` | 从远端拉取覆盖本地，再 Read 本地文件（远端优先） |
 | `check` | 只做 CLI / 登录状态检查，不写文档 |
 
 细则（命令、映射表、异常处理）一律以已加载的 provider reference 为准，不在本文件重复。
@@ -61,11 +62,12 @@ description: '本地 Markdown 与远端文档同步（飞书 / Notion）。当�
 
 ## 关键规则
 
-1. **本地优先**：始终先写/改本地 Markdown，再同步远端
-2. **Notion 显式目标**：未提供 URL / ID 时禁止猜测写入位置
-3. **渐进加载**：只 Read 当前 provider 的 reference
-4. **不负责计划内容**：不生成需求/计划正文；只负责存储与同步
-5. **CLI 失败可降级**：保留本地文件，告知用户错误，建议改用 `local`
+1. **同步方向可指定**：本地优先或远端优先；不明确时先询问，禁止静默覆盖另一侧
+2. **写入粒度可指定**（尤其 feishu）：全量覆盖或局部 patch；不明确时先询问
+3. **Notion 显式目标**：未提供 URL / ID 时禁止猜测写入位置
+4. **渐进加载**：只 Read 当前 provider 的 reference
+5. **不负责计划内容**：不生成需求/计划正文；只负责存储与同步
+6. **CLI 失败可降级**：保留本地文件，告知用户错误，建议改用 `local`
 
 ## 被其他 skill 调用时
 
