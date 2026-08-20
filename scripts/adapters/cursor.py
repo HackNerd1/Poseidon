@@ -1,8 +1,8 @@
 """Cursor skill install helpers.
 
-Cursor discovers Agent Skills from `.cursor/skills/<name>/SKILL.md` (project)
-or `~/.cursor/skills/<name>/SKILL.md` (user). Poseidon keeps canonical skills
-under `plugins/*/skills/*` and copies them into those locations on install.
+Cursor discovers Agent Skills from `.cursor/skills/<name>/SKILL.md` or
+`.agents/skills/<name>/SKILL.md` (project), and the corresponding user-level
+directories. Poseidon uses the shared `~/.agents/skills` location globally.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from adapters import codex
 
 PROJECT_SKILL_PATH = ".cursor/skills"
 USER_SKILL_PATH = Path.home() / ".cursor" / "skills"
+AGENTS_USER_SKILL_PATH = Path.home() / ".agents" / "skills"
 
 
 def discover_plugin_dirs(repo_root: Path) -> list[Path]:
@@ -64,16 +65,16 @@ def discover_skill_dirs(plugin_dirs: list[Path]) -> list[Path]:
     return skill_dirs
 
 
-def skill_install_root(repo_root: Path, scope: str) -> Path:
+def skill_install_root(repo_root: Path, scope: str, mode: str = "agent") -> Path:
     if scope == "user":
-        return USER_SKILL_PATH
+        return AGENTS_USER_SKILL_PATH if mode == "agents" else USER_SKILL_PATH
     if scope == "repo":
-        return repo_root / PROJECT_SKILL_PATH
+        return repo_root / (".agents/skills" if mode == "agents" else PROJECT_SKILL_PATH)
     raise ValueError(f"Unsupported Cursor scope: {scope}")
 
 
-def skill_target_path(repo_root: Path, scope: str, skill_dir: Path) -> Path:
-    return skill_install_root(repo_root, scope) / skill_name(skill_dir)
+def skill_target_path(repo_root: Path, scope: str, skill_dir: Path, mode: str = "agent") -> Path:
+    return skill_install_root(repo_root, scope, mode) / skill_name(skill_dir)
 
 
 def copy_skill(skill_dir: Path, target: Path) -> Path:

@@ -209,6 +209,22 @@ python scripts/install.py --platform claude --scope repo --plugin ruankao --yes
 /plugin install ./.claude/generated/plugins/ruankao
 ```
 
+安装器支持两种 Skill 复制模式，并且每种模式都支持 `repo` / `user` scope：
+
+```bash
+# agent：写入各平台目录（.claude/、.codex/、.cursor/）
+python scripts/install.py --all --mode agent --scope repo --plugin all --yes
+python scripts/install.py --all --mode agent --scope user --plugin all --yes
+
+# agents：写入共享目录（.agents/skills）
+python scripts/install.py --all --mode agents --scope repo --plugin all --yes
+python scripts/install.py --all --mode agents --scope user --plugin all --yes
+
+python scripts/uninstall.py --all --mode agents --scope user --plugin all
+```
+
+默认 `--mode plugin` 保留原有 Marketplace / plugin CLI 安装流程。
+
 ---
 
 ## 四、Skill 编写最佳实践
