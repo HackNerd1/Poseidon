@@ -32,6 +32,8 @@ def operation_platform(operation: Operation) -> str:
         return operation.command[0]
     if operation.action == "sync-cursor":
         return "cursor"
+    if operation.action == "sync-user":
+        return "claude" if operation.path and ".claude" in str(operation.path) else "codex"
     if operation.action == "sync-claude":
         return "claude"
     if operation.action == "sync":
@@ -72,6 +74,7 @@ def describe_operation(root: Path, operation: Operation) -> str:
         "sync": "package",
         "sync-claude": "package",
         "sync-cursor": "skill",
+        "sync-user": "skill",
         "delete": "delete",
     }
     action = action_labels.get(operation.action, operation.action)

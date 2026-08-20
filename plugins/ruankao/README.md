@@ -25,6 +25,12 @@ python scripts/install.py --platform claude --scope repo --plugin ruankao --yes
 /plugin install ./.claude/generated/plugins/ruankao
 ```
 
+# 写入各 Agent 的用户级目录
+python scripts/install.py --all --mode agent --scope user --plugin ruankao --yes
+
+# 写入共享 ~/.agents/skills（用户级）
+python scripts/install.py --all --mode agents --scope user --plugin ruankao --yes
+
 ## 目录结构
 
 ```

@@ -37,6 +37,7 @@ _INTERACTIVE_OK_FLAGS = frozenset(
         "--yes",
         "--scope",
         "--plugin",
+        "--mode",
     }
 )
 
@@ -58,9 +59,16 @@ def parse_args(argv: list[str], supported_platforms: tuple[str, ...]) -> argpars
         choices=SCOPES,
         default=None,
         help=(
-            "Install scope. Codex/Claude support repo only; "
-            "Cursor supports repo (.cursor/skills) and user (~/.cursor/skills). "
-            "Default: repo."
+            "Install scope for the selected mode: repo or user. Default: repo."
+        ),
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("plugin", "agent", "agents"),
+        default=None,
+        help=(
+            "Install mode: plugin (legacy marketplace/CLI flow), agent (platform-specific "
+            "skill directories), or agents (shared .agents/skills). Default: plugin."
         ),
     )
     parser.add_argument(
@@ -85,12 +93,19 @@ def parse_args(argv: list[str], supported_platforms: tuple[str, ...]) -> argpars
     return parser.parse_args(argv)
 
 
-def codex_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list[Operation]:
+def codex_plan(root: Path, scope: str, plugin: str, generate_only: bool, mode: str = "plugin") -> list[Operation]:
     validate_scope("codex", scope)
 
     selected_plugin_dirs = codex.select_plugin_dirs(root, plugin)
     all_plugin_dirs = codex.discover_plugin_dirs(root)
     operations: list[Operation] = []
+    if mode != "plugin":
+        for plugin_dir in selected_plugin_dirs:
+            for skill_dir in cursor.discover_skill_dirs([plugin_dir]):
+                operations.append(
+                    Operation("sync-user", codex.skill_target_path(skill_dir, scope, mode), source=skill_dir)
+                )
+        return operations
     operations.append(
         Operation(
             "write",
@@ -131,10 +146,16 @@ def codex_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list
     return operations
 
 
-def claude_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list[Operation]:
+def claude_plan(root: Path, scope: str, plugin: str, generate_only: bool, mode: str = "plugin") -> list[Operation]:
     validate_scope("claude", scope)
 
     selected_plugin_dirs = codex.select_plugin_dirs(root, plugin)
+    if mode != "plugin":
+        return [
+            Operation("sync-user", claude.skill_target_path(skill_dir, scope, mode), source=skill_dir)
+            for plugin_dir in selected_plugin_dirs
+            for skill_dir in cursor.discover_skill_dirs([plugin_dir])
+        ]
     all_plugin_dirs = claude.discover_plugin_dirs(root)
     operations: list[Operation] = [
         Operation(
@@ -177,7 +198,7 @@ def claude_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> lis
     return operations
 
 
-def cursor_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> list[Operation]:
+def cursor_plan(root: Path, scope: str, plugin: str, generate_only: bool, mode: str = "plugin") -> list[Operation]:
     del generate_only  # Cursor has no separate CLI enable step; copy is the install.
     validate_scope("cursor", scope)
 
@@ -187,7 +208,7 @@ def cursor_plan(root: Path, scope: str, plugin: str, generate_only: bool) -> lis
         operations.append(
             Operation(
                 "sync-cursor",
-                cursor.skill_target_path(root, scope, skill_dir),
+                cursor.skill_target_path(root, scope, skill_dir, mode),
                 source=skill_dir,
             )
         )
@@ -200,18 +221,26 @@ def build_plan(
     scope: str,
     plugin: str,
     generate_only: bool,
+    mode: str = "plugin",
 ) -> list[Operation]:
     operations: list[Operation] = []
     multi_platform = len(platforms) > 1
     for platform in platforms:
         platform_scope = effective_scope(platform, scope, multi_platform=multi_platform)
         if platform == "codex":
-            operations.extend(codex_plan(root, platform_scope, plugin, generate_only))
+            operations.extend(codex_plan(root, platform_scope, plugin, generate_only, mode))
         elif platform == "claude":
-            operations.extend(claude_plan(root, platform_scope, plugin, generate_only))
+            operations.extend(claude_plan(root, platform_scope, plugin, generate_only, mode))
         elif platform == "cursor":
-            operations.extend(cursor_plan(root, platform_scope, plugin, generate_only))
-    return operations
+            operations.extend(cursor_plan(root, platform_scope, plugin, generate_only, mode))
+    unique: list[Operation] = []
+    seen: set[tuple[str, str, str]] = set()
+    for operation in operations:
+        key = (operation.action, str(operation.path), str(operation.source))
+        if key not in seen:
+            seen.add(key)
+            unique.append(operation)
+    return unique
 
 
 def has_failures(operations: list[Operation]) -> bool:
@@ -230,6 +259,12 @@ def _run_operation(root: Path, operation: Operation) -> str | None:
         return None
     if operation.action == "sync-cursor" and operation.source is not None and operation.path is not None:
         cursor.copy_skill(operation.source, operation.path)
+        return None
+    if operation.action == "sync-user" and operation.source is not None and operation.path is not None:
+        if ".claude" in str(operation.path):
+            claude.copy_skill(operation.source, operation.path)
+        else:
+            codex.copy_skill(operation.source, operation.path)
         return None
     if operation.command:
         result = subprocess.run(operation.command, check=False, text=True, capture_output=True)
@@ -275,13 +310,15 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     if args.scope is None:
         args.scope = "repo"
+    if args.mode is None:
+        args.mode = "plugin"
     if args.plugin is None:
         args.plugin = "all"
     args.supported_platforms = supported_platforms
 
     platforms = target_platforms(args)
     try:
-        operations = build_plan(root, platforms, args.scope, args.plugin, args.generate_only)
+        operations = build_plan(root, platforms, args.scope, args.plugin, args.generate_only, args.mode)
     except ValueError as exc:
         print(f"{STYLE.paint('error:', STYLE.red)} {exc}", file=sys.stderr)
         return 2

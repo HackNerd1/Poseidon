@@ -10,9 +10,10 @@ from shared.ui import print_banner, select_choice, select_multiple
 
 
 SCOPES = ("repo", "user")
+INSTALL_MODES = ("plugin", "agent", "agents")
 SUPPORTED_SCOPES = {
-    "codex": ("repo",),
-    "claude": ("repo",),
+    "codex": ("repo", "user"),
+    "claude": ("repo", "user"),
     "cursor": ("repo", "user"),
 }
 
@@ -66,7 +67,28 @@ def interactive_fill(
     """Prompt for missing matrix choices; CLI modifiers are preserved."""
     print_banner(title=title, subtitle=subtitle)
 
-    if args.platform or args.all:
+    if getattr(args, "mode", None) is None:
+        mode_choices = [
+            ("plugin", "Plugin / marketplace (legacy)"),
+            ("agent", "Platform skill dirs (.claude/.codex/.cursor)"),
+            ("agents", "Shared skill dir (.agents/skills)"),
+        ]
+        args.mode = select_choice("Select install mode", mode_choices, "plugin")
+
+    if args.scope is not None:
+        scope = args.scope
+    else:
+        scope_choices = [
+            ("repo", "Repository (current project)"),
+            ("user", "User (all projects)"),
+        ]
+        scope = select_choice("Select install scope", scope_choices, "repo")
+
+    if args.mode == "agents":
+        # The shared Agent Skills directory is platform-neutral; selecting a
+        # platform here would only duplicate the same copy operation.
+        selected_platforms = list(supported_platforms)
+    elif args.platform or args.all:
         selected_platforms = (
             list(supported_platforms)
             if args.all
@@ -84,19 +106,6 @@ def interactive_fill(
         plugin_choices = [(name, name) for name in plugin_names]
         selected_plugins = select_multiple("Select plugins", plugin_choices)
         plugin = encode_plugin_arg(selected_plugins, plugin_names)
-
-    if args.scope is not None:
-        scope = args.scope
-    else:
-        scope = "repo"
-        # When installing multiple platforms, keep Codex/Claude on repo and only
-        # offer Cursor scope when Cursor is the sole target.
-        if selected_platforms == ["cursor"]:
-            scope_choices = [
-                ("repo", "Repo (.cursor/skills)"),
-                ("user", "User (~/.cursor/skills)"),
-            ]
-            scope = select_choice("Select Cursor install scope", scope_choices, "repo")
 
     args.interactive = True
     args.all, args.platform = encode_platform_arg(selected_platforms, supported_platforms)
@@ -139,7 +148,7 @@ def effective_scope(platform: str, scope: str, *, multi_platform: bool) -> str:
     if scope in supported:
         return scope
     if multi_platform and "repo" in supported:
-        # --all with Cursor user scope still installs Codex/Claude at repo scope.
+        # Keep a safe repository fallback for platforms with narrower support.
         return "repo"
     validate_scope(platform, scope)
     return scope

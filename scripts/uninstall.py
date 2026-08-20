@@ -36,6 +36,7 @@ _INTERACTIVE_OK_FLAGS = frozenset(
         "--dry-run",
         "--scope",
         "--plugin",
+        "--mode",
     }
 )
 
@@ -57,8 +58,15 @@ def parse_args(argv: list[str], supported_platforms: tuple[str, ...]) -> argpars
         choices=SCOPES,
         default=None,
         help=(
-            "Install scope used when Cursor skills were copied. "
-            "Codex/Claude support repo only; Cursor supports repo and user. Default: repo."
+            "Install scope to remove for the selected mode: repo or user. Default: repo."
+        ),
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("plugin", "agent", "agents"),
+        default=None,
+        help=(
+            "Uninstall mode matching install.py: plugin, agent, or agents. Default: plugin."
         ),
     )
     parser.add_argument(
@@ -76,10 +84,16 @@ def _removing_all_plugins(root: Path, plugin: str) -> bool:
     return bool(discovered) and len(selected) == len(discovered)
 
 
-def codex_uninstall_plan(root: Path, scope: str, plugin: str) -> list[Operation]:
+def codex_uninstall_plan(root: Path, scope: str, plugin: str, mode: str = "plugin") -> list[Operation]:
     validate_scope("codex", scope)
     selected = codex.select_plugin_dirs(root, plugin)
     operations: list[Operation] = []
+    if mode != "plugin":
+        return [
+            Operation("delete", codex.skill_target_path(skill_dir, scope, mode), source=skill_dir)
+            for plugin_dir in selected
+            for skill_dir in cursor.discover_skill_dirs([plugin_dir])
+        ]
     marketplace = codex.marketplace_name(root)
 
     for plugin_dir in selected:
@@ -115,12 +129,19 @@ def codex_uninstall_plan(root: Path, scope: str, plugin: str) -> list[Operation]
     return operations
 
 
-def claude_uninstall_plan(root: Path, scope: str, plugin: str) -> list[Operation]:
+def claude_uninstall_plan(root: Path, scope: str, plugin: str, mode: str = "plugin") -> list[Operation]:
     validate_scope("claude", scope)
     selected = codex.select_plugin_dirs(root, plugin)
     operations: list[Operation] = []
     marketplace = codex.marketplace_name(root)
     claude_scope = "project" if scope == "repo" else scope
+
+    if mode != "plugin":
+        return [
+            Operation("delete", claude.skill_target_path(skill_dir, scope, mode), source=skill_dir)
+            for plugin_dir in selected
+            for skill_dir in cursor.discover_skill_dirs([plugin_dir])
+        ]
 
     for plugin_dir in selected:
         operations.append(
@@ -157,7 +178,7 @@ def claude_uninstall_plan(root: Path, scope: str, plugin: str) -> list[Operation
     return operations
 
 
-def cursor_uninstall_plan(root: Path, scope: str, plugin: str) -> list[Operation]:
+def cursor_uninstall_plan(root: Path, scope: str, plugin: str, mode: str = "plugin") -> list[Operation]:
     validate_scope("cursor", scope)
     plugin_dirs = cursor.select_plugin_dirs(root, plugin)
     operations: list[Operation] = []
@@ -165,7 +186,7 @@ def cursor_uninstall_plan(root: Path, scope: str, plugin: str) -> list[Operation
         operations.append(
             Operation(
                 "delete",
-                cursor.skill_target_path(root, scope, skill_dir),
+                cursor.skill_target_path(root, scope, skill_dir, mode),
                 source=skill_dir,
             )
         )
@@ -177,18 +198,26 @@ def build_plan(
     platforms: list[str],
     scope: str,
     plugin: str,
+    mode: str = "plugin",
 ) -> list[Operation]:
     operations: list[Operation] = []
     multi_platform = len(platforms) > 1
     for platform in platforms:
         platform_scope = effective_scope(platform, scope, multi_platform=multi_platform)
         if platform == "codex":
-            operations.extend(codex_uninstall_plan(root, platform_scope, plugin))
+            operations.extend(codex_uninstall_plan(root, platform_scope, plugin, mode))
         elif platform == "claude":
-            operations.extend(claude_uninstall_plan(root, platform_scope, plugin))
+            operations.extend(claude_uninstall_plan(root, platform_scope, plugin, mode))
         elif platform == "cursor":
-            operations.extend(cursor_uninstall_plan(root, platform_scope, plugin))
-    return operations
+            operations.extend(cursor_uninstall_plan(root, platform_scope, plugin, mode))
+    unique: list[Operation] = []
+    seen: set[tuple[str, str, str]] = set()
+    for operation in operations:
+        key = (operation.action, str(operation.path), str(operation.source))
+        if key not in seen:
+            seen.add(key)
+            unique.append(operation)
+    return unique
 
 
 def _is_benign_cli_error(detail: str) -> bool:
@@ -282,13 +311,15 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     if args.scope is None:
         args.scope = "repo"
+    if args.mode is None:
+        args.mode = "plugin"
     if args.plugin is None:
         args.plugin = "all"
     args.supported_platforms = supported_platforms
 
     platforms = target_platforms(args)
     try:
-        operations = build_plan(root, platforms, args.scope, args.plugin)
+        operations = build_plan(root, platforms, args.scope, args.plugin, args.mode)
     except ValueError as exc:
         print(f"{STYLE.paint('error:', STYLE.red)} {exc}", file=sys.stderr)
         return 2

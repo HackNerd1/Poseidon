@@ -15,6 +15,8 @@ from adapters import codex
 PLUGIN_MANIFEST = ".claude-plugin/plugin.json"
 MARKETPLACE_PATH = ".claude-plugin/marketplace.json"
 PACKAGE_ROOT = ".claude/generated/plugins"
+USER_SKILL_PATH = Path.home() / ".claude" / "skills"
+PLATFORM_USER_SKILL_PATH = USER_SKILL_PATH
 
 
 def discover_plugin_dirs(repo_root: Path) -> list[Path]:
@@ -39,6 +41,24 @@ def package_root(repo_root: Path) -> Path:
 
 def package_plugin_path(repo_root: Path, plugin_name: str) -> Path:
     return package_root(repo_root) / plugin_name
+
+
+def skill_target_path(skill_dir: Path, scope: str, mode: str = "agent") -> Path:
+    install_root = USER_SKILL_PATH if mode == "agent" else Path.home() / ".agents" / "skills"
+    if scope == "user":
+        return install_root / skill_dir.name
+    if scope == "repo":
+        root_name = ".claude" if mode == "agent" else ".agents"
+        return skill_dir.parents[3] / root_name / "skills" / skill_dir.name
+    raise ValueError(f"Unsupported Claude scope: {scope}")
+
+
+def copy_skill(skill_dir: Path, target: Path) -> Path:
+    if target.exists():
+        shutil.rmtree(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(skill_dir, target, ignore=shutil.ignore_patterns("__pycache__"))
+    return target
 
 
 def package_source_path(plugin_name: str) -> str:

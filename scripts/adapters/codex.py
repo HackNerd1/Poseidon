@@ -16,6 +16,8 @@ MARKETPLACE_PATH = ".agents/plugins/marketplace.json"
 DEFAULT_MARKETPLACE_NAME = "poseidon"
 PACKAGE_ROOT = ".codex/generated/plugins"
 PLUGIN_METADATA = "plugins/plugin-metadata.json"
+USER_SKILL_PATH = Path.home() / ".agents" / "skills"
+PLATFORM_USER_SKILL_PATH = Path.home() / ".codex" / "skills"
 
 
 def discover_plugin_dirs(repo_root: Path) -> list[Path]:
@@ -75,6 +77,24 @@ def package_root(repo_root: Path) -> Path:
 
 def package_plugin_path(repo_root: Path, plugin_name: str) -> Path:
     return package_root(repo_root) / plugin_name
+
+
+def skill_target_path(skill_dir: Path, scope: str, mode: str = "agents") -> Path:
+    install_root = USER_SKILL_PATH if mode == "agents" else PLATFORM_USER_SKILL_PATH
+    if scope == "user":
+        return install_root / skill_dir.name
+    if scope == "repo":
+        root_name = ".agents" if mode == "agents" else ".codex"
+        return skill_dir.parents[3] / root_name / "skills" / skill_dir.name
+    raise ValueError(f"Unsupported Codex scope: {scope}")
+
+
+def copy_skill(skill_dir: Path, target: Path) -> Path:
+    if target.exists():
+        shutil.rmtree(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(skill_dir, target, ignore=shutil.ignore_patterns("__pycache__"))
+    return target
 
 
 def package_source_path(plugin_name: str) -> str:
