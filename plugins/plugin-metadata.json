@@ -40,6 +40,23 @@
       ],
       "category": "Development"
     },
+    "outreach": {
+      "version": "0.1.0",
+      "description": "求职触达工具集 — 根据 JD 与个人经历生成高回复率的打招呼语，规划自动打招呼与自动投递",
+      "author": {
+        "name": "Hansel"
+      },
+      "license": "MIT",
+      "keywords": [
+        "outreach",
+        "打招呼",
+        "求职",
+        "触达",
+        "投递",
+        "JD匹配"
+      ],
+      "category": "Career"
+    },
     "resume": {
       "version": "0.1.0",
       "description": "简历相关技能集合 — 从 Git 仓库提取项目经验、交互式创建符合简历规范的完整简历（含 JD 匹配优化，支持所有岗位）",

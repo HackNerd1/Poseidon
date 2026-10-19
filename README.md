@@ -17,6 +17,7 @@ Claude Code 插件大仓，覆盖开发提效、算法学习、简历准备、�
 /plugin install ruankao@poseidon
 /plugin install algo-coach@poseidon
 /plugin install resume@poseidon
+/plugin install outreach@poseidon
 ```
 
 > **Windows 用户注意**：若 `/plugin marketplace add` 不可用（官方 Marketplace 在 Windows 上未预注册），需先在 `~/.claude/settings.json` 中添加：
@@ -41,6 +42,7 @@ cd Poseidon
 /plugin install ./plugins/ruankao
 /plugin install ./plugins/algo-coach
 /plugin install ./plugins/resume
+/plugin install ./plugins/outreach
 ```
 
 ## 插件
@@ -50,6 +52,7 @@ cd Poseidon
 | [dev-tools](./plugins/dev-tools/) | `plugins/dev-tools/` | 开发提效 — Debug 诊断、代码审查、桌面通知 |
 | [algo-coach](./plugins/algo-coach/) | `plugins/algo-coach/` | 算法学习 — LeetCode 刷题、知识点关联、解法优化 |
 | [resume](./plugins/resume/) | `plugins/resume/` | 简历与面试 — 项目提取、简历生成、格式转换、面试准备 |
+| [outreach](./plugins/outreach/) | `plugins/outreach/` | 求职触达 — 打招呼语生成，规划自动打招呼、自动投递 |
 | [ruankao](./plugins/ruankao/) | `plugins/ruankao/` | 软考系统分析师论文备考 — 论文写作、优化、帮记词、TTS 音频合成 |
 
 ### dev-tools 技能
@@ -87,6 +90,12 @@ cd Poseidon
 | `create-resume` | 交互式创建完整简历，支持 JSON 导入和 JD 关键词匹配 |
 | `convert-md` | 使用 Resumx 将 Markdown 简历转换为 PDF、HTML、DOCX、PNG 等格式 |
 | `prep-interview` | 从简历提取技术栈与项目经验，生成结构化面试准备目录 |
+
+### outreach 技能
+
+| 技能 | 说明 |
+|------|------|
+| `gen-greeting` | 根据 JD 和个人经历生成高回复率打招呼语（主推版 + 超短版），证据分级匹配分析、平台最佳实践联网核查 |
 
 ### ruankao 技能
 
