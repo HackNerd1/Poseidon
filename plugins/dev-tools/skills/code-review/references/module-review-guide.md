@@ -1,6 +1,14 @@
 # Module Review Guide
 
-Use this reference when a review needs module-level architecture judgment rather than only line-level correctness.
+Use when the review needs module-level judgment, not only line-level correctness.
+
+## First Principles First
+
+Apply the First Principles section in `../SKILL.md` before cohesion / coupling / fan metrics. Metrics are investigation aids, not automatic findings.
+
+## Redundant Design
+
+For unused / duplicated / speculative structure, load and follow `redundant-design.md` (do not re-derive the checklist here).
 
 ## Dependency Census Workflow
 
@@ -13,17 +21,16 @@ Minimum questions:
 - Which tests cover those flows?
 
 Preferred approach:
-1. Run `scripts/dependency_census.py <module-path>` to get a first-pass census
-2. Use repository search to verify imports, references, registrations, and call sites that look high-risk
+1. Run `scripts/dependency_census.py <module-path>` for a first-pass census
+2. Verify high-risk imports, registrations, and call sites via repository search
 3. Separate inbound dependents from outbound dependencies
-4. Identify which inbound dependents are high-risk entry points
-5. Inspect tests for the changed module and for the most important dependents
-6. Report whether the census is exact, approximate, or sample-based
+4. Inspect tests for the changed module and critical dependents
+5. Report whether the census is exact, approximate, or sample-based
 
-Output a short summary like:
+Output a short summary:
 - Module: `path/to/module`
-- Fan-in: `N exact` or `approx N` or `sampled callers: A, B, C`
-- Fan-out: `N exact` or `approx N`
+- Fan-in: `N exact` / `approx N` / `sampled callers: A, B, C`
+- Fan-out: `N exact` / `approx N`
 - Inspected dependents: `...`
 - Tests inspected: `...`
 - Blind spots: `...`
@@ -32,119 +39,89 @@ Output a short summary like:
 
 ### Cohesion
 
-Ask whether the file, class, or module has one clear purpose and one primary reason to change.
+Ask: one clear purpose and one primary reason to change?
 
 Flag:
-- Mixed responsibilities such as business logic plus transport plus persistence plus formatting in one unit
-- "Utility" modules that are turning into unrelated helper grab-bags
-- APIs that operate on unrelated concepts or force callers to understand internal details
+- Mixed responsibilities (e.g. business + transport + persistence + formatting in one unit)
+- “Utility” grab-bags of unrelated helpers
+- APIs that force callers to know internals or unrelated concepts
 
 ### Coupling
 
-Ask whether the change increases unnecessary interdependence between modules.
+Ask: does the change add **unnecessary** interdependence?
 
 Flag:
-- New cross-layer imports, back-edges, and boundary violations
-- Framework, storage, or transport details leaking into domain-level code
-- Hidden coupling through globals, shared mutable state, implicit config, ambient context, or import-time side effects
-- Temporal coupling where callers must invoke functions in a fragile order
+- Cross-layer imports, back-edges, boundary violations
+- Framework / storage / transport details leaking into domain code
+- Hidden coupling via globals, shared mutable state, implicit config, ambient context, import-time side effects
+- Temporal coupling that requires fragile call order
 
 ### Fan-out
 
-Ask how many modules this unit depends on and whether it is becoming a dependency hub.
+Ask: are outbound dependencies necessary for the job, or is this becoming a hub?
 
-Flag:
+Flag when necessity fails:
 - Orchestration bloat
-- Change amplification caused by too many outgoing dependencies
-- Poor testability because too many collaborators must be mocked or configured
+- Change amplification from too many outgoing deps
+- Poor testability (too many collaborators to configure)
 
-Suggested responses:
-- Invert dependencies
-- Split responsibilities
-- Hide unstable details behind an adapter or interface
+Responses when justified: invert dependencies, split responsibilities, or hide unstable details behind an existing adapter/interface — do not invent a new abstraction layer without a current second use.
 
-Do not stop at a qualitative statement like "high fan-out". Prefer one of:
-- Exact count from repository search
-- Approximate count with disclosed uncertainty
-- Named sample of the outbound dependencies actually inspected
+Prefer exact / approximate / named-sample counts over “high fan-out” alone.
 
 ### Fan-in
 
-Ask how many callers or dependents are affected by the change.
+High fan-in → small diffs can have large blast radius. Review shared APIs, utilities, base classes, schemas, hooks, and config helpers more strictly.
 
-High fan-in means even a small diff may have large blast radius.
+Flag real contract shifts:
+- Signature / semantic / default / error-behavior changes
 
-Review more strictly when changing:
-- Public APIs
-- Shared utilities
-- Base classes
-- Shared schemas
-- Hooks
-- Config helpers
+Prefer exact / approximate / sample-based dependent lists with blind spots stated.
 
-Flag:
-- Signature changes
-- Semantic changes
-- Default-value changes
-- Error-behavior changes
+### Stability (optional)
 
-Do not stop at "this is a high fan-in module". Prefer one of:
-- Exact dependent list
-- Approximate dependent count plus named critical callers
-- Sample-based caller list with explicit blind spots
-
-### Stability Heuristic
-
-When rough counts are feasible, reason about stability using:
+Only when counts are reliable enough to discuss:
 
 `instability = fan-out / (fan-in + fan-out)`
 
-Interpretation:
-- High fan-out and low fan-in implies a volatile component
-- High fan-in components should expose smaller, more stable interfaces
-- Stable layers should not depend on volatile ones unless the architecture explicitly allows it
+Use as a soft hint:
+- High fan-in modules should stay small and stable at the interface
+- Stable layers should not depend on volatile ones unless architecture allows it
+
+Do **not** compute or cite this formula when fan counts are sample-based or highly uncertain — that is over-interpretation.
 
 ## Architecture Erosion Signals
 
-Explicitly check for:
+Check:
 - Cyclic dependencies
-- Duplicate functionality introduced in a second module instead of extending the first
 - Bypassing intended extension points, adapters, or facades
-- "Just this once" shortcuts that weaken layer boundaries
+- “Just this once” shortcuts that weaken layer boundaries
 - Shared modules absorbing unrelated responsibilities over time
+- Redundant design signals from `redundant-design.md` (especially duplicates and parallel modules)
 
 ## Scope Expansion Rules
 
-Widen the review beyond the diff when the change touches:
-- A public API
-- A shared module
-- A schema or config contract
-- A high-fan-in utility
-- A boundary between layers or services
+Widen beyond the diff when touching:
+- Public API, shared module, schema/config contract, high-fan-in utility, or layer/service boundary
 
-Then inspect:
-- Callers
-- Tests
-- Documentation
-- Adjacent modules connected by imports or shared types
+Then inspect callers, tests, docs, and adjacent modules connected by imports or shared types.
 
 When time is limited, prioritize:
 1. Entry points and user-triggered flows
-2. Shared command/runtime/planner layers
-3. Test files that should pin behavior
+2. Shared command / runtime / planner layers
+3. Tests that should pin behavior
 4. Docs or schemas that define the contract
 
 ## Architecture Finding Labels
 
-For architecture findings, explicitly name one or more trigger signals:
+Name one or more trigger signals:
 - `Cohesion`
 - `Coupling`
 - `Fan-in`
 - `Fan-out`
 - `Cycle`
 - `Boundary violation`
-- `Duplicate functionality`
-- `Over-engineering`
+- `Redundant design`
 
 ## Review Completeness Rule
 
