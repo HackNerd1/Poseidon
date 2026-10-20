@@ -1,0 +1,4 @@
+# auto-apply 脚本依赖（Python 3.10+）
+# 必须用 patchright。不要改用原生 Playwright：Boss 会识别 CDP 特征并打空白页，脚本不再回退。
+# 运行时还需要本机 Google Chrome（channel=chrome），不使用捆绑 Chromium。
+patchright>=1.48

@@ -41,8 +41,8 @@
       "category": "Development"
     },
     "outreach": {
-      "version": "0.1.0",
-      "description": "求职触达工具集 — 根据 JD 与个人经历生成高回复率的打招呼语，规划自动打招呼与自动投递",
+      "version": "0.2.0",
+      "description": "求职触达工具集 — 生成高回复率打招呼语；自动投递简历工作流（搜索→筛选→招呼语→定制简历→投递），当前支持 BOSS直聘",
       "author": {
         "name": "Hansel"
       },
@@ -53,7 +53,9 @@
         "求职",
         "触达",
         "投递",
-        "JD匹配"
+        "JD匹配",
+        "自动投递",
+        "boss直聘"
       ],
       "category": "Career"
     },

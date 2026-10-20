@@ -1,0 +1,66 @@
+[
+  {
+    "skills": [
+      "auto-apply"
+    ],
+    "name": "greeting-refs-one-level",
+    "query": "按 auto-apply 给 6 个 Boss 岗位批量写打招呼语，不要联网。",
+    "expected_behavior": [
+      "读取 ../gen-greeting/references/greeting-principles.md 与 greeting-templates.md（相对 auto-apply 技能目录）",
+      "不调用 WebSearch",
+      "不在 auto-apply/references/ 下寻找这两份文件"
+    ]
+  },
+  {
+    "skills": [
+      "auto-apply"
+    ],
+    "name": "login-check-no-browser",
+    "query": "检查 Boss 登录态，不要弹窗。",
+    "expected_behavior": [
+      "运行 scripts/boss/login.py --check",
+      "不启动浏览器",
+      "退出码 0 表示已登录，2 表示需要扫码；cookie 库读失败是 1，不要当成未登录去重扫"
+    ]
+  },
+  {
+    "skills": [
+      "auto-apply"
+    ],
+    "name": "reject-empty-greeting-before-click",
+    "query": "按 evals/fixtures/plan-missing-greeting.json 执行投递。",
+    "files": [
+      "evals/fixtures/plan-missing-greeting.json"
+    ],
+    "expected_behavior": [
+      "缺 link 或 greeting 的条目在打开岗位页面前记为 error",
+      "不点击「立即沟通」，也不启动浏览器去处理这些无效条目",
+      "不把 resumes/ 下的定制简历或 plan.resume 当作已发送"
+    ]
+  },
+  {
+    "skills": [
+      "auto-apply"
+    ],
+    "name": "parttime-filter-before-scoring",
+    "query": "用 auto-apply 给我搜兼职并筛选，日薪下限 300、每天 4 小时，不要自己心算时薪。",
+    "expected_behavior": [
+      "搜索后运行 scripts/boss/filter.py，只读 RESULT 指向的 candidates-<日期>.json 打分，不把 jobs-*.json 全量读进对话",
+      "元/时、元/天、元/周、元/月 岗位的 belowFloor 由脚本按 config 的 hoursPerDay/salaryFloorDay 标记，模型不自行折算",
+      "boundary 岗位（below_floor/wide_range/hourly_too_high）单独列出交用户勾选，不静默丢弃",
+      "70 分附近岗位先运行 detail.py 核对工作周期/结算方式，不对全部候选开详情"
+    ]
+  },
+  {
+    "skills": [
+      "auto-apply"
+    ],
+    "name": "config-missing-fields-refuse-and-ask",
+    "query": "直接用现有 config 跑 Boss 兼职搜索（config.json 缺 headed / hoursPerDay / salaryFloorDay 之一）。",
+    "expected_behavior": [
+      "search.py --config 以 CONFIG_MISSING 退出并列出缺失字段，不启动浏览器",
+      "向用户补问缺失字段（hoursPerDay 问用户本人，不默认 8 小时）写回 config.json 后才重试",
+      "不用默认值绕过，也不忽略 skipInactiveDays 的 IGNORED 提示"
+    ]
+  }
+]

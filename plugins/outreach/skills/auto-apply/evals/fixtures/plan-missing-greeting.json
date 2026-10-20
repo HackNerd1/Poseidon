@@ -1,0 +1,17 @@
+{
+  "batch": "eval-missing-greeting",
+  "jobs": [
+    {
+      "link": "https://www.zhipin.com/job_detail/eval-should-not-open.html",
+      "job": "后端",
+      "company": "不应打开的公司",
+      "greeting": "",
+      "resume": "/tmp/should-not-be-sent.pdf"
+    },
+    {
+      "job": "缺链接",
+      "company": "也不应打开",
+      "greeting": "有招呼语但没有链接"
+    }
+  ]
+}
