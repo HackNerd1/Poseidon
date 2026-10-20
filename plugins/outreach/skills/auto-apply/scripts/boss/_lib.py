@@ -52,6 +52,23 @@ def write_json(path: str | Path, data: Any) -> None:
     tmp.replace(p)
 
 
+def rotate_existing(path: str | Path) -> str | None:
+    """写入前发现同名旧文件则轮转为 -HHMM 后缀，同日重跑不静默覆盖
+    （2026-10-20：第二次运行覆盖了 screen 审计，阈值调优数据丢失）。
+    返回轮转后的路径；无同名文件返回 None。"""
+    p = Path(path)
+    if not p.exists():
+        return None
+    stamp = time.strftime("%H%M")
+    rotated = p.with_name(f"{p.stem}-{stamp}{p.suffix}")
+    n = 1
+    while rotated.exists():  # 同一分钟内多次重跑
+        rotated = p.with_name(f"{p.stem}-{stamp}-{n}{p.suffix}")
+        n += 1
+    p.replace(rotated)
+    return str(rotated)
+
+
 # ---- 城市代码（常用，完整表见 references/boss-zhipin.md）----
 CITIES = {
     "100010000": "全国", "101010100": "北京", "101020100": "上海", "101280100": "广州",
@@ -257,6 +274,24 @@ def body_text(page) -> str:
         return ""
 
 
+def editor_text(page) -> str:
+    """聊天输入框（contenteditable）里的文字。整页 innerText 含输入框，校验发送状态前要剔除。"""
+    try:
+        return page.evaluate(
+            "() => { const e = document.querySelector(\"[contenteditable='true']\");"
+            " return e ? e.innerText : ''; }")
+    except Exception:
+        return ""
+
+
+def history_text(page) -> str:
+    """整页文本减去输入框文字：「打了还没发出去」的内容不算已发送，
+    防止发送校验假阳性（2026-10-20 事故专档 4.1）。"""
+    body = body_text(page)
+    editor = editor_text(page)
+    return body.replace(editor, "") if editor else body
+
+
 def is_captcha(page) -> bool:
     return bool(RISK_TEXT.search(body_text(page)))
 
@@ -397,6 +432,21 @@ def parse_salary(s: str) -> dict | None:
         lo, hi = int(m.group(1)), int(m.group(2) or m.group(1))
         return {"unit": unit, "min": lo, "max": hi}
     return None
+
+
+def deadline_expired(value: str, today: str | None = None) -> bool | None:
+    """「招聘截止」值（如 '时间：2026-12-18' / '2026年8月25日'）是否已过期。
+    解析不出日期返回 None（按未知处理，不判过期）。"""
+    m = re.search(r"(\d{4})\s*[-/.年]\s*(\d{1,2})\s*[-/.月]\s*(\d{1,2})", value or "")
+    if not m:
+        return None
+    y, mo, d = (int(g) for g in m.groups())
+    try:
+        deadline = time.strptime(f"{y}-{mo}-{d}", "%Y-%m-%d")
+    except ValueError:
+        return None
+    ref = time.strptime(today, "%Y-%m-%d") if today else time.localtime()
+    return deadline < ref
 
 
 # ---- 投递台账（防重投）----

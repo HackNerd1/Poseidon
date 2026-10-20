@@ -9,6 +9,7 @@ top 候选写招呼语前取 JD 全文。不要对全部候选逐个开——慢
     python detail.py --link https://www.zhipin.com/job_detail/<id>.html [--headed]
 
 输出: BOSS_DIR/detail-<id>.json；stdout 末行 RESULT <路径>
+招聘截止已过期时额外输出 DEADLINE_EXPIRED 行（处置惯例见 references/matching.md）
 退出码: 0 成功 / 2 未登录 / 1 风控或页面异常
 """
 import argparse
@@ -16,8 +17,9 @@ import re
 import sys
 import time
 
-from _lib import (BOSS_DIR, CONFIG_PATH, SEL, body_text, first_page, goto_guarded,
-                  has_login, is_captcha_strict, launch, read_json, shot, sync_pw, write_json)
+from _lib import (BOSS_DIR, CONFIG_PATH, SEL, body_text, deadline_expired, first_page,
+                  goto_guarded, has_login, is_captcha_strict, launch, read_json, shot,
+                  sync_pw, write_json)
 
 # 兼职条款标签（2026-10-20：详情页有这些字段，列表接口没有）
 TERM_LABELS = ("工作周期", "每周工期", "工作时间", "结算方式", "结算周期", "招聘截止")
@@ -99,12 +101,17 @@ def main() -> int:
                 "jdText": jd.strip(),
                 "rawText": text,  # 选择器没命中时的兜底：字段位置见 references/boss-zhipin.md
             }
+            deadline = payload["terms"].get("招聘截止") or ""
+            payload["deadlineExpired"] = deadline_expired(deadline) if deadline else None
             out = BOSS_DIR / f"detail-{jid}.json"
             write_json(out, payload)
             missing = [k for k in TERM_LABELS if k not in payload["terms"]]
             print(f"[detail] HR活跃={payload['hrActivity'] or '未识别'} "
                   f"条款={payload['terms'] or '未识别'} JD={len(payload['jdText'])}字"
                   + (f"（缺标签: {'、'.join(missing)}，看 rawText）" if missing else ""))
+            if payload["deadlineExpired"]:
+                print(f"DEADLINE_EXPIRED 招聘截止 {deadline} 已过期（HR活跃={payload['hrActivity'] or '未识别'}）；"
+                      "截止过期且 HR 长期不活跃才淘汰，近期活跃交用户决策（matching.md）")
             print(f"RESULT {out}")
             return 0
         finally:

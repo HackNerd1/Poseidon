@@ -6,12 +6,17 @@
 且当时 parse_salary 对兼职四类单位全返回 null，硬过滤形同虚设，靠模型对话里临时脚本补。
 
 用法:
-    python filter.py                          # 自动取 BOSS_DIR 下最新 jobs-*.json
+    python filter.py              # 自动取 BOSS_DIR 下最新 jobs-*.json
+    python filter.py --table      # 同上，并在 stdout 打印紧凑评分表（含 area/hrOnline/标记），
+                                  # 模型评分读表即可，不必把 candidates JSON 读进对话
     python filter.py --jobs jobs-2026-10-20.json [--config-path config.json]
 
 输出（BOSS_DIR 下，日期取 jobs 快照的 fetchedAt）:
-    candidates-<日期>.json   # 候选 + 边界，模型只需要读这一个文件
+    candidates-<日期>.json   # 候选 + 边界（写计划/复核时按 id 取字段用）
     screen-<日期>.json       # 全量审计：每条的去向与原因、淘汰统计，调阈值时才读
+同日重跑自动把同名旧文件轮转为 -HHMM 后缀，不覆盖（2026-10-20 screen 审计曾被覆盖）。
+已抓过详情（detail-<id>.json）的岗位会带上 deadline/hrActivity/deadlineExpired 标记，
+招聘截止的处置规则见 references/matching.md。
 stdout 末行: RESULT <candidates路径>
 退出码: 0 成功 / 1 输入缺失或配置不足（CONFIG_MISSING 需补问用户，不得用默认值折算）
 """
@@ -22,7 +27,8 @@ import time
 from pathlib import Path
 
 from _lib import (BOSS_DIR, CITIES, CONFIG_PATH, DEFAULT_CONFIG, config_gaps,
-                  parse_salary, read_json, write_json)
+                  deadline_expired, parse_salary, read_json, rotate_existing,
+                  write_json)
 
 # 折算常量与依据：
 HARD_CUT = 0.85             # matching.md：上限低于期望下限的 85% 才算硬伤，留 15% 谈判空间
@@ -42,6 +48,42 @@ def _slim(job: dict) -> dict:
     return {k: v for k, v in job.items() if k not in _SLIM_KEYS}
 
 
+def load_deadlines(out_dir: Path) -> dict[str, dict]:
+    """收集已抓详情里的招聘截止与 HR 活跃（详情页才有，列表接口没有）。
+    返回 id → {"deadline": "时间：2026-12-18", "expired": bool|None, "hrActivity": "..."}。"""
+    known: dict[str, dict] = {}
+    for pf in out_dir.glob("detail-*.json"):
+        d = read_json(pf, {})
+        jid = str(d.get("id") or "")
+        deadline = (d.get("terms") or {}).get("招聘截止") or ""
+        if jid and deadline:
+            known[jid] = {"deadline": deadline, "expired": deadline_expired(deadline),
+                          "hrActivity": d.get("hrActivity") or ""}
+    return known
+
+
+def render_table(candidates: list[dict], boundary: list[dict]) -> str:
+    """紧凑评分视图（TSV，候选在前边界在后）：评分所需字段一次给全，
+    含 area 与 hrOnline（2026-10-20：投影漏 area 导致补查一轮）。"""
+    cols = ["#", "状态", "id", "岗位", "公司", "薪资", "area", "hrOnline", "工作周期",
+            "经验", "学历", "行业", "阶段", "规模", "技能", "标记"]
+    lines = ["\t".join(cols)]
+    for i, (status, j) in enumerate([( "候选", j) for j in candidates]
+                                    + [("边界", j) for j in boundary], 1):
+        flags = list(j.get("boundaryReasons") or [])
+        if j.get("belowFloor") and "below_floor" not in flags:
+            flags.append("below_floor")
+        if j.get("deadlineExpired"):
+            flags.append("deadline_expired")
+        cells = [str(i), status, j.get("id") or "", j.get("job") or "", j.get("company") or "",
+                 j.get("salary") or "", j.get("area") or "", "true" if j.get("hrOnline") else "",
+                 j.get("daysPerWeek") or "", j.get("experience") or "", j.get("degree") or "",
+                 j.get("industry") or "", j.get("stage") or "", j.get("scale") or "",
+                 ",".join(j.get("skills") or []), ",".join(flags)]
+        lines.append("\t".join(cells))
+    return "\n".join(lines)
+
+
 def convert_unit(sp: dict, hours_per_day: float, days_per_week: int) -> dict:
     """计件薪资折算出时薪/日薪区间（元）。K 月薪属全职口径，不折算，返回空 dict。"""
     unit, lo, hi = sp["unit"], sp["min"], sp["max"]
@@ -59,10 +101,12 @@ def convert_unit(sp: dict, hours_per_day: float, days_per_week: int) -> dict:
             "dayMin": round(hlo * hours_per_day, 1), "dayMax": round(hhi * hours_per_day, 1)}
 
 
-def screen_jobs(jobs: list[dict], cfg: dict) -> tuple[list[dict], list[dict], list[dict], dict]:
+def screen_jobs(jobs: list[dict], cfg: dict, known_details: dict[str, dict] | None = None
+                ) -> tuple[list[dict], list[dict], list[dict], dict]:
     """纯函数：返回 (candidates, boundary, dropped, stats)。boundary 条目带 boundaryReasons，
     dropped 条目带 reason。cfg 需含 blacklistCompanies/blacklistKeywords/salaryFloorDay/
-    hoursPerDay/jobType/city/includeTitleKeywords/excludeTitleKeywords。"""
+    hoursPerDay/jobType/city/includeTitleKeywords/excludeTitleKeywords。
+    known_details 为 load_deadlines() 的结果，命中时给候选补 deadline/hrActivity/deadlineExpired。"""
     hpd = float(cfg["hoursPerDay"])
     floor_day = float(cfg["salaryFloorDay"]) if cfg.get("salaryFloorDay") is not None else None
     include = cfg.get("includeTitleKeywords") or []
@@ -144,6 +188,13 @@ def screen_jobs(jobs: list[dict], cfg: dict) -> tuple[list[dict], list[dict], li
                 boundary.append(out)
                 stats["boundary"] += 1
                 continue
+        info = (known_details or {}).get(job.get("id") or "")
+        if info:
+            out["deadline"] = info["deadline"]
+            if info.get("expired"):
+                out["deadlineExpired"] = True
+            if info.get("hrActivity"):
+                out["hrActivity"] = info["hrActivity"]
         candidates.append(out)
         stats["candidates"] += 1
 
@@ -155,6 +206,8 @@ def main() -> int:
     parser.add_argument("--jobs", help="搜索快照路径（默认 BOSS_DIR 下最新 jobs-*.json）")
     parser.add_argument("--config-path", help="config 路径（默认 ~/.poseidon/outreach/config.json）")
     parser.add_argument("--out-dir", help="输出目录（默认 BOSS_DIR）")
+    parser.add_argument("--table", action="store_true",
+                        help="stdout 追加打印紧凑评分表（评分读表，不读 candidates JSON）")
     args = parser.parse_args()
 
     config_path = Path(args.config_path) if args.config_path else CONFIG_PATH
@@ -184,21 +237,32 @@ def main() -> int:
               "hoursPerDay 要问用户本人（不得默认 8 小时），补问后写入 config.json 再重跑")
         return 1
 
-    candidates, boundary, dropped, stats = screen_jobs(jobs, cfg)
-    date = (payload.get("fetchedAt") or time.strftime("%Y-%m-%d"))[:10]
     out_dir = Path(args.out_dir) if args.out_dir else BOSS_DIR
+    known = load_deadlines(BOSS_DIR)  # detail.py 固定写 BOSS_DIR，deadline 查找不受 --out-dir 影响
+    candidates, boundary, dropped, stats = screen_jobs(jobs, cfg, known_details=known)
+    date = (payload.get("fetchedAt") or time.strftime("%Y-%m-%d"))[:10]
     ctx_cfg = {k: cfg.get(k) for k in ("jobType", "city", "salaryFloorDay", "hoursPerDay")}
     candidates_payload = {"source": str(jobs_path), "fetchedAt": payload.get("fetchedAt"),
                           "filteredAt": time.strftime("%Y-%m-%dT%H:%M:%S"), "config": ctx_cfg,
                           **stats, "boundary": boundary, "candidates": candidates}
     candidates_path = out_dir / f"candidates-{date}.json"
+    rotated = rotate_existing(candidates_path)
+    if rotated:
+        print(f"[filter] 同名旧文件已轮转 → {rotated}（同日重跑不覆盖）")
     write_json(candidates_path, candidates_payload)
     screen_payload = {**candidates_payload, "dropped": dropped}
     screen_path = out_dir / f"screen-{date}.json"
+    rotate_existing(screen_path)
     write_json(screen_path, screen_payload)
 
     print(f"[filter] 输入 {stats['input']} → 候选 {stats['candidates']} + 边界 {stats['boundary']}"
           f"，淘汰 {sum(stats['dropped'].values())}（{stats['dropped']}）")
+    expired = [j for j in candidates + boundary if j.get("deadlineExpired")]
+    if expired:
+        print(f"[filter] DEADLINE_EXPIRED {len(expired)} 条招聘截止已过（已打 deadlineExpired 标，"
+              "处置惯例见 references/matching.md：HR 长期不活跃才淘汰，近期活跃交用户决策）")
+    if args.table:
+        print(render_table(candidates, boundary))
     print(f"[filter] 候选/边界 → {candidates_path}；审计（含淘汰明细）→ {screen_path}")
     print(f"RESULT {candidates_path}")
     return 0

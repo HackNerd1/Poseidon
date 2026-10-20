@@ -2,6 +2,7 @@
 """锁住评审里会让 Claude 走错路或真点出去的契约。不启动浏览器。"""
 import contextlib
 import io
+import re
 import sqlite3
 import sys
 import tempfile
@@ -15,8 +16,9 @@ import apply  # noqa: E402
 import detail  # noqa: E402
 import filter  # noqa: E402
 import login  # noqa: E402
-from _lib import (CookieReadError, config_gaps, parse_salary, profile_has_login,
-                  read_wt2_expiry)  # noqa: E402
+from _lib import (CookieReadError, config_gaps, deadline_expired, editor_text,
+                  history_text, parse_salary, profile_has_login, read_wt2_expiry,
+                  rotate_existing)  # noqa: E402
 
 
 def parttime_cfg(**over):
@@ -232,6 +234,91 @@ class DetailExtract(unittest.TestCase):
     def test_online_resume_button_is_not_activity(self):
         # 「完善在线简历」含「在线」二字，不能被当成活跃时间（2026-10-19 教训）
         self.assertIsNone(detail.extract_hr_activity("完善在线简历\n工作周期：每周2天"))
+
+
+class RotateExisting(unittest.TestCase):
+    def test_same_name_file_is_rotated_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "screen-2026-10-20.json"
+            p.write_text('{"old": true}', encoding="utf-8")
+            rotated = rotate_existing(p)
+            self.assertIsNotNone(rotated)
+            self.assertTrue(re.search(r"-\d{4}\.json$", Path(rotated).name))
+            assert rotated is not None
+            self.assertEqual(Path(rotated).read_text(encoding="utf-8"), '{"old": true}')
+            self.assertFalse(p.exists())
+
+    def test_missing_file_returns_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(rotate_existing(Path(tmp) / "nope.json"))
+
+
+class HistoryText(unittest.TestCase):
+    class FakePage:
+        def evaluate(self, script):
+            if "contenteditable" in script:
+                return "打了一半没发出去"
+            return "历史消息\n打了一半没发出去"
+
+    def test_editor_text_excluded_from_history(self):
+        hist = history_text(self.FakePage())
+        self.assertIn("历史消息", hist)
+        self.assertNotIn("打了一半没发出去", hist)
+        self.assertEqual(editor_text(self.FakePage()), "打了一半没发出去")
+
+    def test_apply_validates_against_history_not_body(self):
+        # 2026-10-20 事故专档 4.1：输入框残留文字不得被校验成已发送
+        src = (Path(__file__).resolve().parent / "apply.py").read_text(encoding="utf-8")
+        self.assertIn("history_text(chat_page)", src)
+        self.assertNotIn("snippet in body_text", src)
+
+
+class DeadlineRules(unittest.TestCase):
+    def test_deadline_expired_parser(self):
+        self.assertTrue(deadline_expired("时间：2026-12-18", today="2027-01-01"))
+        self.assertFalse(deadline_expired("时间：2026-12-18", today="2026-10-20"))
+        self.assertTrue(deadline_expired("2026年5月31日", today="2026-10-20"))
+        self.assertIsNone(deadline_expired("长期有效"))
+
+    def test_filter_tags_expired_deadline_from_known_details(self):
+        known = {"i1": {"deadline": "时间：2026-08-25", "expired": True, "hrActivity": "2月内活跃"}}
+        cands, _, _, _ = filter.screen_jobs([mkjob(1)], parttime_cfg(), known_details=known)
+        self.assertEqual(cands[0]["deadline"], "时间：2026-08-25")
+        self.assertTrue(cands[0]["deadlineExpired"])
+        self.assertEqual(cands[0]["hrActivity"], "2月内活跃")
+
+    def test_detail_prints_deadline_expired_line(self):
+        src = (Path(__file__).resolve().parent / "detail.py").read_text(encoding="utf-8")
+        self.assertIn("DEADLINE_EXPIRED", src)
+
+
+class FilterTable(unittest.TestCase):
+    def test_table_includes_area_and_hr_online(self):
+        # 2026-10-20：临时投影漏 area 导致无法判断坐班/异地，补查多花一轮
+        cands, _, _, _ = filter.screen_jobs([mkjob(1)], parttime_cfg())
+        table = filter.render_table(cands, [])
+        header = table.splitlines()[0]
+        self.assertIn("area", header)
+        self.assertIn("hrOnline", header)
+        self.assertIn("杭州·西湖", table)
+        self.assertIn("候选", table)
+
+    def test_boundary_rows_marked_in_status_column(self):
+        _, boundary, _, _ = filter.screen_jobs([mkjob(2, salary="40-60元/时")], parttime_cfg())
+        table = filter.render_table([], boundary)
+        self.assertIn("边界", table.splitlines()[1])
+
+
+class SearchAndVerifyContracts(unittest.TestCase):
+    def test_search_result_line_carries_stopped_and_fetched(self):
+        src = (Path(__file__).resolve().parent / "search.py").read_text(encoding="utf-8")
+        self.assertIn("stopped=", src)
+        self.assertIn("fetched=", src)
+
+    def test_apply_has_readonly_verify_mode(self):
+        src = (Path(__file__).resolve().parent / "apply.py").read_text(encoding="utf-8")
+        self.assertIn("--verify", src)
+        self.assertIn("run_verify", src)
 
 
 class ApplyPlan(unittest.TestCase):

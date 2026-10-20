@@ -37,6 +37,8 @@ description: 自动投递简历工作流：按用户简历与求职偏好，在�
     └── screenshots/        # 风控/异常留证
 ```
 
+同日重跑时 `jobs/candidates/screen` 的同名文件会自动轮转为 `-HHMM` 后缀，不覆盖（apply 的 result/verify 文件名自带时间戳）。**数据清理**：可安全删除测试/临时文件（`*-test*`、`*smoke*`）、已投完或淘汰岗位的 `detail-<id>.json`、过期日期的快照与 result 文件；`config.json`、`delivered.json`（投递台账）、`profile/`（登录态）不要动。
+
 ## 首次使用
 
 ```bash
@@ -78,15 +80,15 @@ $VENV/bin/python scripts/boss/search.py --config
 # 或临时参数: $VENV/bin/python scripts/boss/search.py --query "golang" --city 101280600 --pages 2
 ```
 
-读取输出 JSON（stdout 末行 `RESULT <路径>`），检查 `stopped` 字段：`captcha`/`blank` → 停止让用户处理后重试；`no_api` → 见故障排查。数据经 `joblist.json` 接口拦截获取（明文薪资/HR在线/猎头标记/公司行业规模阶段/技能福利标签），字段说明见 `references/boss-zhipin.md`。
+stdout 末行 `RESULT <路径> stopped=<...> fetched=<条数>` 已带搜索状态，不必再读 JSON：`captcha`/`blank` → 停止让用户处理后重试；`no_api` → 见故障排查。数据经 `joblist.json` 接口拦截获取（明文薪资/HR在线/猎头标记/公司行业规模阶段/技能福利标签），字段说明见 `references/boss-zhipin.md`。
 
 搜索成功后立即预过滤（纯本地，不启动浏览器）：
 
 ```bash
-$VENV/bin/python scripts/boss/filter.py   # 自动取最新 jobs-*.json
+$VENV/bin/python scripts/boss/filter.py --table   # 自动取最新 jobs-*.json，stdout 输出紧凑评分表
 ```
 
-之后只读 `RESULT` 指向的 `candidates-<日期>.json`（候选 + 边界，计件薪资已折算时薪/日薪并打好 `belowFloor`），向用户展示总数与样例。原始 `jobs-*.json` 留在本地不要读进对话——160 条全量进上下文曾是最大 token 消耗点。淘汰明细在 `screen-<日期>.json`，调阈值时才读。
+评分直接用 stdout 的紧凑表（TSV：候选在前边界在后，含 area/hrOnline/工作周期/标记列，标记含 `below_floor`/`wide_range`/`hourly_too_high`/`deadline_expired`），**不要把 `candidates-<日期>.json` 读进对话**——129KB 全量与 160 条 jobs 一样是 token 大头（2026-10-20 曾靠临时投影脚本规避）。JSON 仍照常落盘，写计划/复核时按 id 取字段用。带详情的岗位会有 `deadlineExpired`/`hrActivity` 标。淘汰明细在 `screen-<日期>.json`，调阈值时才读。
 
 ### 第三步：筛选（Claude 判断）
 
@@ -97,6 +99,7 @@ $VENV/bin/python scripts/boss/filter.py   # 自动取最新 jobs-*.json
 ```
 
 - `boundary` 边界岗位（`below_floor`/`wide_range`/`hourly_too_high`）不静默丢弃，单独列出交用户决策
+- 带 `deadlineExpired` 标（招聘截止已过）的岗位按 `references/matching.md` 的截止惯例处置：不自动淘汰，结合 HR 活跃标注后交用户
 - 70 分附近、或日薪/周薪计酬与 `hoursPerDay` 可能不兼容的岗位，先 `detail.py --link <岗位链接>` 拉详情核对「工作周期/每周工期/结算方式」再定；不要对全部候选逐个开详情
 - 经验/学历明显不符仍由你判断淘汰，不进表格；`hrOnline=false` 不淘汰（实测候选可能全不在线），不要按活跃天数淘汰
 - 展示候选清单，**等用户勾选确认**后进入物料阶段（`autoConfirm=true` 时仅展示）
@@ -132,13 +135,21 @@ $VENV/bin/python scripts/boss/apply.py --plan <plan路径>
 $VENV/bin/python scripts/boss/apply.py --plan <plan路径> --execute
 ```
 
-dry-run 不打开聊天层，首次 execute 出现少量「未找到聊天输入框」error 属预期：会话其实已建立（平台代发了默认招呼语），向用户说明后用 `--retry` 补发即可（已沟通岗位按聊天记录内容去重，不会重发）。结果文件带时间戳（stdout `RESULT` 指向最新一份），重跑不覆盖历史。解读结果：`sent` / `already_connected` / `skipped` / `no_button` / `error`；`stopped=captcha|daily_limit` 时告知用户原因与截图位置。缺 `link` 或 `greeting` 的 `error` 是计划校验失败，没有打开页面；「未找到聊天输入框」的 error 附有 `diag/` 明细路径，排查选择器是否过时用。
+dry-run 不打开聊天层，首次 execute 出现少量「未找到聊天输入框」error 属预期：会话其实已建立（平台代发了默认招呼语），向用户说明后用 `--retry` 补发即可（已沟通岗位按聊天记录内容去重，不会重发）。结果文件带时间戳（stdout `RESULT` 指向最新一份），重跑不覆盖历史。`sent` 的 note 即注明「已送达聊天记录，位于平台默认招呼语之上」。解读结果：`sent` / `already_connected` / `skipped` / `no_button` / `error`；`stopped=captcha|daily_limit` 时告知用户原因与截图位置。缺 `link` 或 `greeting` 的 `error` 是计划校验失败，没有打开页面；「未找到聊天输入框」的 error 附有 `diag/` 明细路径，排查选择器是否过时用。
+
+节奏与重试（2026-10-20 实测校准）：
+
+- **预期时长**：每岗约 10-20 秒（含随机间隔），每 10 岗长休息 1-3 分钟；13 岗约 4-5 分钟。浏览器就绪会先输出 `[apply] 浏览器已就绪`，进度逐行实时刷新；1 分钟无任何输出才算卡住，否则是正常慢
+- **同日第二轮 execute 先冷却 ≥3 分钟**：当日多次浏览器会话（搜索/详情/dry-run/execute）的频次累积会触发弹层/软风控，症状是 13/13 全报「未找到聊天输入框」且 diag 的 `bodyTextHead` 停在职位详情初始态——此时不要排查选择器，直接冷却后补发
+- **目标性补投**：`--execute --retry --limit N`（N=失败岗位在 plan 中的序号）只处理前 N 个，已成功的按聊天记录内容去重秒过，凑到失败那条
+- **投后核实**：`apply.py --plan <plan> --verify` 只读逐岗打开会话比对招呼语是否已在聊天记录（不点击「立即沟通」、不发送），输出 `ok/missing/in_editor/not_connected` 逐条表；用于抽检或用户质疑「招呼语没发出去」时自证。逐岗开页积累频次，别当日常流程跑
 
 ### 第六步：台账与跟进
 
 汇总本次投递清单（公司/岗位/招呼语要点/时间），提醒用户：
+- 新会话里有两条消息是正常的：平台默认招呼语（打开会话时平台代发）在上、定制招呼语在下——不是发送失败；核查用 `apply.py --verify`
 - HR 回复通常在 24h 内，次日可运行 `gen-greeting` 的跟进模板对「已读不回」跟进
-- 建议每次投递后记录回复情况，用于调整黑名单与筛选阈值
+- 建议每次投递后记录回复情况，用于调整黑名单与筛选阈值（delivered.json 暂无 replyStatus 字段，跨会话靠本清单跟踪）
 
 ## 故障排查
 
@@ -149,7 +160,9 @@ dry-run 不打开聊天层，首次 execute 出现少量「未找到聊天输入
 | `stopped=no_api`（未拦截到数据接口） | 未登录或风控；反复出现则 Boss 改版，按 `references/boss-zhipin.md`「维护指引」更新 `map_job` 字段映射 |
 | `captcha` 频繁 | 降低 `dailyLimit`、拉大 `delaySec`、冷却几分钟；`--headed` 在窗口中人工完成图形验证；检查代理（需关闭） |
 | 后台运行就触发风控？ | 实测屏幕外隐藏窗口与前台指纹一致（visibilityState 相同），风控与窗口位置无关，多为频次累积——先冷却 |
+| execute 大面积「未找到聊天输入框」，diag 的 `bodyTextHead` 停在职位详情初始态 | 会话未建立：频次累积触发了弹层/软风控，不是选择器问题。冷却 ≥3 分钟后 `--execute --retry` 补发（2026-10-20：首跑 13/13 失败，冷却 150s 后 retry 全部成功） |
 | 投递后 HR 侧无记录 | 可能触发了默认招呼语机制，见 `references/boss-zhipin.md`「已知怪癖」 |
+| 用户质疑「招呼语没发出去」 | 会话顶部是平台默认招呼语，定制招呼语是第二条；用 `apply.py --verify <plan>` 逐岗出核实表自证 |
 
 ## 参考文件
 

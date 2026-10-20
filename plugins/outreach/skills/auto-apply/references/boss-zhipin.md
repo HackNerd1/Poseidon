@@ -80,7 +80,7 @@
 | 立即沟通 | `a.btn-startchat`（兜底 `a[ka='job_detail_chat']`、text 匹配） |
 | 已沟通过 | 同位置按钮文字变「继续沟通」→ 打开会话后按聊天记录内容去重补发，不重发已有内容 |
 | 聊天输入框 | `#chat-input`（contenteditable div；兜底 `.chat-input textarea`、`[contenteditable='true']`）。2026-10-20 复测：点「继续沟通」后当前标签页 SPA 跳 `/web/geek/chat` 路由，输入框在主 frame 约 1s 可见；探测必须跨标签页×iframe（`_lib.find_chat_input`） |
-| 发送按钮 | `button.btn-send`（初始 disabled，输入后启用；兜底 text=发送 / 回车。发送后以聊天记录气泡校验为准） |
+| 发送按钮 | `button.btn-send`（初始 disabled，输入后启用；兜底 text=发送 / 回车。发送后以聊天记录校验为准，用 `_lib.history_text`——整页文本减输入框文字，「打了没发出去」不算已发送，防假阳性 sent） |
 
 详情页（2026-10-19 实测，旧说法已过时）：新版详情页**不再请求** `job/detail.json`，岗位数据走 SSR，直接在 DOM `innerText` 里。可提取：完整 JD、兼职条款（工作周期/每周工期/结算方式/招聘截止时间）、HR 活跃时间。活跃时间是 boss 名下一整行（`刚刚活跃`/`本周活跃`/`半年前活跃` 等），**列表接口 joblist.json 没有这个字段**（只有 `bossOnline` 布尔）。注意页面固定按钮「完善在线简历」含「在线」二字，正则必须整行匹配，不能子串搜「在线」。`detail.py --link <岗位链接>` 即按此提取并落 `detail-<id>.json`（`hrActivity`/`terms`/`jdText`，`rawText` 兜底全文——标签没识别到时先看它）。
 
@@ -106,10 +106,11 @@
 - 直连（`--no-proxy-server`）；绝不服务器部署；避开深夜/整点批量跑
 - 逐字符输入（30-90ms/字符）、随机延迟、人类式滚动
 - 已沟通（「继续沟通」）岗位绝不重发
+- **同日多次浏览器会话是弹层诱因**（2026-10-20 实测）：搜索 + 4×详情 + dry-run + execute 累计 4+ 次会话后，execute 首跑 13/13 报 no_input，diag 的 bodyTextHead 显示页面全停在职位详情初始态（会话未建立）；冷却 150s 后 `--retry` 11+1 成功、弹层消失。同日第二轮 execute 前主动冷却 ≥3 分钟；症状出现时不要排查选择器
 
 ## 已知怪癖
 
-1. **默认招呼语自动发送**（2026-10-20 复测）：首次点击「立即沟通」后 Boss 先用账号预设默认招呼语开聊（如「你好，我对这个职位很有兴趣…」），定制招呼语需再发一条。当日事故：`apply.py` 连续 5 岗报「未找到聊天输入框」，根因是 `find_visible` 用 `is_visible(timeout=)`（瞬时检查、不等待）且只扫单一 page/frame，SPA 跳路由后探测全落空。已修：`wait_for` 真等待 + `find_chat_input` 跨标签页/iframe 全量探测；已沟通岗位改为打开会话后按「聊天记录是否已含本条招呼语」去重补发，`--retry` 可重处理失败批次
+1. **默认招呼语自动发送**（2026-10-20 复测）：首次点击「立即沟通」后 Boss 先用账号预设默认招呼语开聊（如「你好，我对这个职位很有兴趣…」），定制招呼语需再发一条。当日事故：`apply.py` 连续 5 岗报「未找到聊天输入框」，根因是 `find_visible` 用 `is_visible(timeout=)`（瞬时检查、不等待）且只扫单一 page/frame，SPA 跳路由后探测全落空。已修：`wait_for` 真等待 + `find_chat_input` 跨标签页/iframe 全量探测；已沟通岗位改为打开会话后按「聊天记录是否已含本条招呼语」去重补发，`--retry` 可重处理失败批次。投后核实用 `apply.py --verify`（只读，逐岗比对 `in_history`/`in_editor`）
 2. **URL page 参数无效**：SPA 分页只认滚动触发，构造翻页 URL 没用（实测 page=2 仍返回第 1 批）
 3. **兼职筛选**：搜索 URL 加 `&jobType=1903` 即只出兼职岗（SPA 会带进 joblist POST；响应 `jobType=6` 为兼职、`0` 为全职）。`search.py --job-type` / `config.jobType` 已支持。兼职薪资常为「元/天」「元/时」（2026-10-20 实测 160 条兼职里计件占 100%），`parse_salary` 已支持元/时、元/天、元/周、元/月四类（含单值如「200元/天」）；折算成时薪/日薪与 `belowFloor` 标记由 `filter.py` 完成，`hoursPerDay` 必须来自用户确认过的 config，不得默认 8 小时。旧快照里残缺的 `salaryParsed` 会被 `filter.py` 重新解析覆盖，无需重搜
 4. **`is_captcha` 全文误报**：详情页 JD 正文提到「验证码」会被旧版全文正则判成风控（赛琳贸易岗实测）。详情/聊天页改用 `is_captcha_strict`（只认 geetest 面板或「安全验证/异常操作/访问环境异常」弹层文案）；搜索页仍用全文版

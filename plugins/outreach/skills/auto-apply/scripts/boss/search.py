@@ -9,7 +9,8 @@
     python search.py --query "golang" [--city 101280600] [--pages 3] [--out jobs.json]
     python search.py --config            # 按 ~/.poseidon/outreach/config.json 逐关键词搜索
 
-输出: 岗位 JSON 文件；stdout 末行打印 RESULT <路径>
+输出: 岗位 JSON 文件；同日重跑自动把同名旧快照轮转为 -HHMM 后缀，不覆盖
+stdout 末行: RESULT <路径> stopped=<none|captcha|blank|no_api|daily_limit> fetched=<条数>
 退出码: 0 成功 / 2 未登录 / 1 风控或抓取失败或配置缺字段
 
 --config 前置校验（config_gaps）：缺 headed / 兼职缺 hoursPerDay、salaryFloorDay 时打印
@@ -23,8 +24,8 @@ import time
 
 from _lib import (BOSS_DIR, CITIES, CONFIG_PATH, DEFAULT_CONFIG, config_gaps,
                   delivered_recently, first_page, goto_guarded, has_login, is_captcha,
-                  is_daily_limit, launch, parse_salary, rand_delay, read_json, shot,
-                  sync_pw, write_json)
+                  is_daily_limit, launch, parse_salary, rand_delay, read_json,
+                  rotate_existing, shot, sync_pw, write_json)
 
 JOBLIST = "joblist.json"
 
@@ -207,9 +208,12 @@ def main() -> int:
                 "stopped": stopped,
                 "jobs": jobs_list,
             }
+            rotated = rotate_existing(args.out)
+            if rotated:
+                print(f"[search] 同名旧快照已轮转 → {rotated}（同日重跑不覆盖）")
             write_json(args.out, payload)
             print(f"[search] 共 {len(jobs_list)} 条 → {args.out}")
-            print(f"RESULT {args.out}")
+            print(f"RESULT {args.out} stopped={stopped or 'none'} fetched={len(jobs_list)}")
             return 0 if jobs_list else 1
         finally:
             ctx.close()
