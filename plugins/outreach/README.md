@@ -35,12 +35,12 @@
 
 ## auto-apply 工作流
 
-1. **准备登录**：扫码登录（cookie 约 7 天），配置 `~/.poseidon/outreach/config.json`
-2. **搜索**：`search.py` 按「关键词 × 城市」抓取岗位（拦截页面数据接口：明文薪资、HR 姓名/在线、猎头标记、公司行业/规模、技能/福利标签、台账去重标记）；`filter.py` 预过滤出候选（黑名单/猎头/已投/岗位名门禁/去重）并把兼职计件薪资折算成时薪/日薪
-3. **筛选**：Claude 只读 `candidates-<日期>.json`，按 `references/matching.md` 评分（技术栈 40 / 业务域 20 / 职责同构 20 / 质量 10 / 薪资 10），边界岗位（贴线/宽幅/可疑时薪）交用户决策
-4. **物料**：`gen-greeting` 生成招呼语（超短版适配聊天框）+ `create-resume` 按 JD 定制简历（默认 top 3，只落盘，投递脚本不发送附件）
-5. **投递**：`apply.py` 先 dry-run 验证链路，确认后 `--execute` 发送；浏览器前台/后台在首次配置 `headed` 时定死，投递前不再询问。日上限 50、随机间隔 8-20s、每 10 个长休息、验证码即停
-6. **台账**：`delivered.json` 防重投（7 天），输出投递汇总与跟进建议
+1. **准备登录**：扫码登录（cookie 约 7 天）。每次启动用 `filter.py --show-config` 确认参数（含折算公式与 `hoursPerDay`），并询问今日目标条数
+2. **搜索**：按目标循环 `search.py` → `filter.py --table --merge-rounds`，同日快照按岗位 id 去重；新增候选耗尽或可投达到目标即停，不超额
+3. **筛选**：评分读 `--table`，不读候选 JSON。勾选前 `detail.py --links` 一批拉详情，硬条件由脚本打标（`references/matching.md`）
+4. **物料**：`gen-greeting` 生成招呼语 + `create-resume` 按 JD 定制简历（只落盘，投递脚本不发送附件）
+5. **投递**：`apply.py` 先 dry-run，确认后 `--execute`。`search+detail` 超过 6 次后脚本强制冷却。日上限 50、验证码即停
+6. **台账**：execute 后必跑 `--verify`；`delivered.json` 防重投（7 天）并带 `replyStatus`
 
 连接方式与选择器维护见 `skills/auto-apply/references/`（平台扩展索引：boss 已实现，猎聘/智联/51job/拉勾规划）。
 

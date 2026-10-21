@@ -25,7 +25,7 @@ import time
 from _lib import (BOSS_DIR, CITIES, CONFIG_PATH, DEFAULT_CONFIG, config_gaps,
                   delivered_recently, first_page, goto_guarded, has_login, is_captcha,
                   is_daily_limit, launch, parse_salary, rand_delay, read_json,
-                  rotate_existing, shot, sync_pw, write_json)
+                  record_session, rotate_existing, shot, sync_pw, write_json)
 
 JOBLIST = "joblist.json"
 
@@ -107,6 +107,7 @@ def main() -> int:
     with sync_pw() as pw:
         ctx = launch(pw, visible=args.headed)
         try:
+            record_session("search")  # 一次进程一条，翻页不再累加
             page = first_page(ctx)
             if not has_login(ctx):
                 print("LOGIN_EXPIRED 登录态缺失，请先运行: python login.py")

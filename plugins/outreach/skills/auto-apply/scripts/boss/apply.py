@@ -5,8 +5,8 @@
     python apply.py --plan plan.json               # dry-run：只验证链路，不发送
     python apply.py --plan plan.json --execute     # 真实发送
     python apply.py --plan plan.json --limit 5     # 本次最多投 5 个
-    python apply.py --plan plan.json --verify      # 只读核实：逐岗开已建会话比对招呼语
-                                                   # 是否在聊天记录（不发送；抽检/自证用）
+    python apply.py --plan plan.json --verify      # 只读核实：execute 后必跑，逐岗 ok/missing
+    python apply.py --set-reply <岗位id> read       # 写台账 replyStatus，不启动浏览器
 
 plan JSON 结构（由 Claude 在筛选/物料阶段生成）:
     {
@@ -34,22 +34,29 @@ import sys
 import time
 from pathlib import Path
 
-from _lib import (sync_pw, CONFIG_PATH, DEFAULT_CONFIG, SEL, delivered_recently,
-                  delivered_today_count, dump_frame_diag, editor_text, find_chat_input,
-                  find_visible, first_page, goto_guarded, has_login, history_text,
-                  human_type, is_captcha_strict, is_daily_limit, job_key, launch,
-                  mark_delivered, rand_delay, read_json, shot, write_json)
+from _lib import (sync_pw, CONFIG_PATH, DEFAULT_CONFIG, SEL, SESSION_BUDGET,
+                  cooldown_wait_sec, delivered_recently, delivered_today_count,
+                  dump_frame_diag, editor_text, find_chat_input, find_visible, first_page,
+                  goto_guarded, has_login, history_text, human_type, is_captcha_strict,
+                  is_daily_limit, job_key, launch, mark_delivered, note_verify, rand_delay,
+                  read_json, read_sessions, record_session, set_reply_status, shot, write_json)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Boss直聘投递执行器")
-    parser.add_argument("--plan", required=True, help="投递计划 JSON 路径")
+    parser.add_argument("--plan", help="投递计划 JSON 路径")
     parser.add_argument("--execute", action="store_true", help="真实发送（默认 dry-run）")
     parser.add_argument("--limit", type=int, default=0, help="本次最多处理 N 个岗位（0=不限）")
     parser.add_argument("--headed", action="store_true", help="前台显示浏览器窗口（默认隐藏窗口后台运行；真实发送建议前台便于观察）")
     parser.add_argument("--retry", action="store_true", help="忽略 7 天台账防重，重新处理失败批次（补发场景；已沟通岗位按聊天记录内容去重，不会重发）")
-    parser.add_argument("--verify", action="store_true", help="只读核实：逐岗打开详情，仅已沟通的进会话比对招呼语是否在聊天记录；不点击「立即沟通」、不发送。逐岗开页会积累频次，仅抽检或质疑发送状态时用")
+    parser.add_argument("--verify", action="store_true", help="只读核实：逐岗打开详情，仅已沟通的进会话比对招呼语是否在聊天记录；不点击「立即沟通」、不发送。execute 后必跑，与 execute/retry 共用冷却预算")
+    parser.add_argument("--set-reply", nargs=2, metavar=("ID", "STATUS"),
+                        help="写 delivered.json 的 replyStatus（unread/read/replied/no_reply），不启动浏览器")
     args = parser.parse_args()
+    if args.set_reply:
+        return args
+    if not args.plan:
+        parser.error("缺少 --plan（写回复状态用 --set-reply，不需要 plan）")
     plan_path = Path(args.plan).expanduser()
     if not plan_path.exists():
         parser.error(f"plan 文件不存在: {plan_path}")
@@ -203,6 +210,7 @@ def run_verify(ctx, page, jobs: list[dict]) -> tuple[dict, list]:
         rec = verify_one(ctx, page, job, job.get("greeting", "") if isinstance(job, dict) else "")
         results.append(rec)
         summary[rec["status"]] = summary.get(rec["status"], 0) + 1
+        note_verify(rec.get("id") or "", rec["status"], rec.get("note") or "")
         print(f"[verify] ({i + 1}/{total}) {rec.get('company')} · {rec.get('job')} → {rec['status']}: {rec['note']}")
         if i < total - 1:
             rand_delay((1.5, 3))
@@ -217,6 +225,8 @@ def _emit(plan_path: Path, plan: dict, mode: str, stop_reason, summary: dict, re
                "results": results}
     write_json(result_path, payload)
     print(f"[apply] 汇总 {json.dumps(summary, ensure_ascii=False)} 中止={stop_reason}")
+    if mode == "EXECUTE":
+        print("VERIFY_REQUIRED 接着跑 apply.py --plan <同一plan> --verify，批次才算结束")
     print(f"RESULT {result_path}")
     return result_path
 
@@ -230,10 +240,32 @@ def _rec(job: dict) -> dict:
             "greeting": str(greeting)[:80]}
 
 
+def _cool_before_apply(execute: bool, verify: bool) -> None:
+    """search+detail 超过预算时，execute/verify 先冷却。无绕过开关——频控不靠记忆。"""
+    if not execute and not verify:
+        return
+    sessions = read_sessions()
+    wait = cooldown_wait_sec(sessions)
+    if wait <= 0:
+        return
+    opened = sum(1 for s in sessions if s.get("kind") in ("search", "detail"))
+    print(f"COOLDOWN_REQUIRED search+detail={opened} > {SESSION_BUDGET}，"
+          f"apply 前冷却 {wait:.0f}s（execute/retry/verify 共用，不要中断）")
+    time.sleep(wait)
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(line_buffering=True)  # 逐岗进度即时可见（2026-10-20：启动后 3-4 分钟无输出，难分「慢」与「卡死」）
     args = parse_args()
+    if args.set_reply:
+        key, status = args.set_reply
+        err = set_reply_status(key, status)
+        if err:
+            print(err)
+            return 1
+        print(f"REPLY_STATUS {key} {status}")
+        return 0
     plan_path = Path(args.plan).expanduser()
     plan = read_json(plan_path, {})
     jobs = plan.get("jobs") or []
@@ -273,9 +305,11 @@ def main() -> int:
         _emit(plan_path, plan, mode, "invalid_plan", summary, results)
         return 1
 
+    _cool_before_apply(args.execute, args.verify)
     with sync_pw() as pw:
         ctx = launch(pw, visible=args.headed or bool(config.get("headed")))
         try:
+            record_session("verify" if args.verify else "apply")
             page = first_page(ctx)
             if not has_login(ctx):
                 print("LOGIN_EXPIRED 登录态缺失，请先运行: python login.py")

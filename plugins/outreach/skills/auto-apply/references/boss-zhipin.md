@@ -82,12 +82,12 @@
 | 聊天输入框 | `#chat-input`（contenteditable div；兜底 `.chat-input textarea`、`[contenteditable='true']`）。2026-10-20 复测：点「继续沟通」后当前标签页 SPA 跳 `/web/geek/chat` 路由，输入框在主 frame 约 1s 可见；探测必须跨标签页×iframe（`_lib.find_chat_input`） |
 | 发送按钮 | `button.btn-send`（初始 disabled，输入后启用；兜底 text=发送 / 回车。发送后以聊天记录校验为准，用 `_lib.history_text`——整页文本减输入框文字，「打了没发出去」不算已发送，防假阳性 sent） |
 
-详情页（2026-10-19 实测，旧说法已过时）：新版详情页**不再请求** `job/detail.json`，岗位数据走 SSR，直接在 DOM `innerText` 里。可提取：完整 JD、兼职条款（工作周期/每周工期/结算方式/招聘截止时间）、HR 活跃时间。活跃时间是 boss 名下一整行（`刚刚活跃`/`本周活跃`/`半年前活跃` 等），**列表接口 joblist.json 没有这个字段**（只有 `bossOnline` 布尔）。注意页面固定按钮「完善在线简历」含「在线」二字，正则必须整行匹配，不能子串搜「在线」。`detail.py --link <岗位链接>` 即按此提取并落 `detail-<id>.json`（`hrActivity`/`terms`/`jdText`，`rawText` 兜底全文——标签没识别到时先看它）。
+详情页（2026-10-19 实测，旧说法已过时）：新版详情页**不再请求** `job/detail.json`，岗位数据走 SSR，直接在 DOM `innerText` 里。可提取：完整 JD、兼职条款（工作周期/每周工期/结算方式/招聘截止时间）、HR 活跃时间。活跃时间是 boss 名下一整行（`刚刚活跃`/`本周活跃`/`半年前活跃` 等），**列表接口 joblist.json 没有这个字段**（只有 `bossOnline` 布尔）。注意页面固定按钮「完善在线简历」含「在线」二字，正则必须整行匹配，不能子串搜「在线」。`detail.py --links <id>,<id>`（或 `--link` / `--links-file`）单会话顺序抓取，落 `detail-<id>.json`（`hrActivity`/`terms`/`jdText`/`jdFlags`，`rawText` 兜底）。一批多岗只计 1 次浏览器会话。硬条件标的含义见 `matching.md`。
 
 ## 维护指引（Boss 改版后）
 
 1. **搜索抓取异常**：先区分层级——接口没拦到（`stopped=no_api`）→ 登录/风控问题；接口有数据但字段错 → Boss 改了字段名，对照本手册「字段映射」更新 `map_job`；分页失效 → 确认还是无限滚动（滚动触发 POST `page=N`）
-2. **投递链路异常**（`no_button`/找不到输入框）：本机浏览器打开岗位详情页，DevTools 查按钮新类名，更新 `_lib.SEL` 的 `detail`/`chat` 多候选数组首位（旧的保留兜底），并同步本手册。输入框找不到时先跑跨 frame/标签页探测（`find_chat_input`），apply 的 no_input error 会在 `boss/diag/chat-*.json` 落每个 frame 的候选选择器命中数与正文头部，先读它再改 SEL（截图没法被脚本回读）；`is_visible(timeout=)` 不等待，别用它做出现等待
+2. **投递链路异常**（`no_button`/找不到输入框）：本机浏览器打开岗位详情页，DevTools 查按钮新类名，更新 `_lib.SEL` 的 `detail`/`chat` 多候选数组首位（旧的保留兜底），并同步本手册。输入框找不到时先跑跨 frame/标签页探测（`find_chat_input`），apply 的 no_input error 会在 `boss/diag/chat-*.json` 落明细。schema 是 `{tag, pages: [{url, bodyTextHead, frames: [{url, selectorHits}]}]}`——`bodyTextHead` 不在顶层，`selectorHits` 在 `pages[].frames[]`。`bodyTextHead` 停在职位详情初始态 = 会话未建立（频控），先冷却，不要改 SEL。`is_visible(timeout=)` 不等待，别用它做出现等待
 3. **页面结构大改**（如详情改双栏 SPA 内嵌）：详情可拦截 `job/detail.json`，聊天弹层选择器重新探测；若接口加密升级则回退 DOM + 字体解码方案（社区有 kanzhun 字体映射脚本可参考）
 
 ## 频控与风控
@@ -106,7 +106,7 @@
 - 直连（`--no-proxy-server`）；绝不服务器部署；避开深夜/整点批量跑
 - 逐字符输入（30-90ms/字符）、随机延迟、人类式滚动
 - 已沟通（「继续沟通」）岗位绝不重发
-- **同日多次浏览器会话是弹层诱因**（2026-10-20 实测）：搜索 + 4×详情 + dry-run + execute 累计 4+ 次会话后，execute 首跑 13/13 报 no_input，diag 的 bodyTextHead 显示页面全停在职位详情初始态（会话未建立）；冷却 150s 后 `--retry` 11+1 成功、弹层消失。同日第二轮 execute 前主动冷却 ≥3 分钟；症状出现时不要排查选择器
+- **同日多次浏览器会话是弹层诱因**（2026-10-20 实测，2026-10-21 复现）：搜索 + 逐岗详情 + dry-run + execute 累加后，execute 全报 no_input，diag 的 `pages[].bodyTextHead` 停在职位详情初始态（会话未建立）。冷却后 `--retry` 可恢复。脚本把每次 search/detail/apply/verify 进程记入 `sessions.json`（批量 detail 一次进程只记 1 条）。`search+detail` **超过 6 次**后，`--execute` / `--verify` 会先 `COOLDOWN_REQUIRED` 并 sleep 到距上次会话 ≥180s，没有跳过开关。不要改回一岗一进程
 
 ## 已知怪癖
 

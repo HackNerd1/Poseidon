@@ -434,6 +434,51 @@ def parse_salary(s: str) -> dict | None:
     return None
 
 
+# JD 硬条件（2026-10-21）：列表字段没有 211/985、工时窗口。只扫详情全文，不靠模型翻 JD。
+# 「硕士」必须带要求语境，避免技能描述里的偶然出现；「不限/无要求」不算窗口。
+_SCHOOL_211 = re.compile(r"211|985|双一流")
+_DEGREE_MASTER = re.compile(r"硕士(及以上|研究生|学历|学位)|硕士以上|要求硕士")
+_WEEKLY_HOURS = re.compile(r"每周[^\n]{0,8}?(\d+)\s*小时")
+_TIME_CLOCK = re.compile(r"\d{1,2}:\d{2}")
+_TIME_WINDOW_LOOSE = re.compile(r"工作日\s*\d{1,2}\s*[-~到至]\s*\d{1,2}\s*点")
+_TERM_NONE = ("不限", "无要求", "面议", "弹性", "")
+_LONG_INACTIVE = re.compile(r"半年前|\d+\s*年前|一年前|1年前|\d+\s*月前|很久")
+
+# 同日浏览器会话预算。search+detail 超过此次数后，execute/verify 必须先冷却。
+# 批量 detail 一次进程只计 1 次（2026-10-21：8 次详情是频控主因）。
+SESSION_BUDGET = 6
+COOLDOWN_SEC = 180
+_SESSION_KINDS = ("search", "detail", "apply", "verify")
+REPLY_STATUSES = ("unread", "read", "replied", "no_reply")
+
+
+def scan_jd_flags(text: str, terms: dict | None = None) -> list[str]:
+    """从详情全文 + 兼职条款打硬条件标。无命中返回空列表。"""
+    blob = text or ""
+    terms = terms or {}
+    flags: list[str] = []
+    if _SCHOOL_211.search(blob):
+        flags.append("school_211")
+    if _DEGREE_MASTER.search(blob):
+        flags.append("degree_master")
+    weekly = (terms.get("每周工期") or "").strip()
+    if weekly and weekly not in _TERM_NONE:
+        flags.append("weekly_days")
+    if _WEEKLY_HOURS.search(blob):
+        flags.append("weekly_hours")
+    work_time = (terms.get("工作时间") or "").strip()
+    if work_time and work_time not in _TERM_NONE and _TIME_CLOCK.search(work_time):
+        flags.append("time_window")
+    elif _TIME_WINDOW_LOOSE.search(blob):
+        flags.append("time_window")
+    return flags
+
+
+def hr_long_inactive(activity: str) -> bool:
+    """「半年前/N月前活跃」视为长期不活跃。空串与「刚刚/本周/N日内」不是。"""
+    return bool(_LONG_INACTIVE.search(activity or ""))
+
+
 def deadline_expired(value: str, today: str | None = None) -> bool | None:
     """「招聘截止」值（如 '时间：2026-12-18' / '2026年8月25日'）是否已过期。
     解析不出日期返回 None（按未知处理，不判过期）。"""
@@ -461,8 +506,91 @@ def load_delivered() -> dict:
 
 def mark_delivered(rec: dict) -> None:
     d = load_delivered()
-    d["delivered"][job_key(rec)] = {**rec, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    key = job_key(rec)
+    prev = d["delivered"].get(key) or {}
+    stored = {**rec, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    # 重投/补发不要抹掉已写下的回复状态（2026-10-21：台账此前没有 replyStatus 载体）
+    if "replyStatus" not in rec:
+        stored["replyStatus"] = prev.get("replyStatus")
+    d["delivered"][key] = stored
     write_json(DELIVERED_PATH, d)
+
+
+def note_verify(key: str, status: str, note: str, path: Path | None = None) -> None:
+    """把 --verify 结果写回已有台账。没有这条投递记录时不新建。"""
+    if not key:
+        return
+    dest = path or DELIVERED_PATH
+    d = read_json(dest, {"delivered": {}})
+    rec = (d.get("delivered") or {}).get(key)
+    if not rec:
+        return
+    rec["verifyStatus"] = status
+    rec["verifyNote"] = note
+    rec["verifiedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    d["delivered"][key] = rec
+    write_json(dest, d)
+
+
+def set_reply_status(key: str, status: str, path: Path | None = None) -> str:
+    """写 replyStatus。成功返回空串，否则返回 REPLY_STATUS_* 错误行。不启动浏览器。"""
+    if status not in REPLY_STATUSES:
+        return f"REPLY_STATUS_INVALID {status}（允许 {'/'.join(REPLY_STATUSES)}）"
+    dest = path or DELIVERED_PATH
+    d = read_json(dest, {"delivered": {}})
+    rec = (d.get("delivered") or {}).get(key)
+    if not rec:
+        return f"REPLY_STATUS_MISSING {key}"
+    rec["replyStatus"] = status
+    rec["replyStatusAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    d["delivered"][key] = rec
+    write_json(dest, d)
+    return ""
+
+
+def sessions_path(root: Path | None = None) -> Path:
+    return (root or BOSS_DIR) / "sessions.json"
+
+
+def record_session(kind: str, root: Path | None = None, at: str | None = None) -> None:
+    """记一次已打开的浏览器会话。kind 为 search/detail/apply/verify。一次进程记一条。"""
+    if kind not in _SESSION_KINDS:
+        raise ValueError(f"unknown session kind: {kind}")
+    path = sessions_path(root)
+    day = (at or time.strftime("%Y-%m-%dT%H:%M:%S"))[:10]
+    data = read_json(path, {})
+    data.setdefault(day, []).append({"kind": kind, "at": at or time.strftime("%Y-%m-%dT%H:%M:%S")})
+    write_json(path, data)
+
+
+def read_sessions(root: Path | None = None, day: str | None = None) -> list[dict]:
+    day = day or time.strftime("%Y-%m-%d")
+    data = read_json(sessions_path(root), {})
+    return list(data.get(day) or [])
+
+
+def _parse_session_at(at: str) -> float:
+    return time.mktime(time.strptime(at[:19], "%Y-%m-%dT%H:%M:%S"))
+
+
+def cooldown_wait_sec(sessions: list[dict], now: float | None = None,
+                      threshold: int = SESSION_BUDGET, need: int = COOLDOWN_SEC) -> float:
+    """search+detail 次数超过 threshold 时，返回距离上次浏览器会话还要冷却的秒数。未超返回 0。"""
+    opened = [s for s in sessions if s.get("kind") in ("search", "detail")]
+    if len(opened) <= threshold:
+        return 0.0
+    times = []
+    for s in sessions:
+        if s.get("kind") not in _SESSION_KINDS or not s.get("at"):
+            continue
+        try:
+            times.append(_parse_session_at(s["at"]))
+        except ValueError:
+            continue
+    if not times:
+        return float(need)
+    now = time.time() if now is None else now
+    return max(0.0, need - (now - max(times)))
 
 
 def delivered_recently(key: str, days: int = 7) -> bool:

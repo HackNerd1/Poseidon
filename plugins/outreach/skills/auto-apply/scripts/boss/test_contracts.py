@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """锁住评审里会让 Claude 走错路或真点出去的契约。不启动浏览器。"""
 import contextlib
+import json
 import io
 import re
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
@@ -16,9 +18,10 @@ import apply  # noqa: E402
 import detail  # noqa: E402
 import filter  # noqa: E402
 import login  # noqa: E402
-from _lib import (CookieReadError, config_gaps, deadline_expired, editor_text,
+import _lib  # noqa: E402
+from _lib import (CookieReadError, config_gaps, cooldown_wait_sec, deadline_expired, editor_text,
                   history_text, parse_salary, profile_has_login, read_wt2_expiry,
-                  rotate_existing)  # noqa: E402
+                  rotate_existing, scan_jd_flags)  # noqa: E402
 
 
 def parttime_cfg(**over):
@@ -337,6 +340,249 @@ class ApplyPlan(unittest.TestCase):
     def test_present_greeting_reaches_navigation(self):
         with self.assertRaises(AttributeError):
             apply.greet_one(object(), object(), {"link": "https://www.zhipin.com/job_detail/x.html"}, "你好", False)
+
+
+
+class SalaryRuleFlags(unittest.TestCase):
+    def test_monthly_uses_same_daymax_cut_as_daily(self):
+        # 4000/22=181.8 < 255，与 181 元/天同一条 below_floor；6000/22=272.7 贴线不进边界
+        cands, boundary, _, _ = filter.screen_jobs(
+            [mkjob(1, company="甲", salary="2000-4000元/月"),
+             mkjob(2, company="法研堂", salary="5000-6000元/月"),
+             mkjob(3, company="丙", salary="272元/天")],
+            parttime_cfg())
+        self.assertEqual(boundary[0]["boundaryReasons"], ["below_floor"])
+        self.assertEqual(boundary[0]["dayMax"], round(4000 / 22, 1))
+        by_id = {c["id"]: c for c in cands}
+        self.assertIn("i2", by_id)
+        self.assertTrue(by_id["i2"]["nearFloor"])
+        self.assertEqual(by_id["i2"]["dayMax"], round(6000 / 22, 1))
+        self.assertTrue(by_id["i3"]["nearFloor"])
+        self.assertNotIn("boundaryReasons", by_id["i2"])
+
+    def test_list_degree_and_experience_are_flags_not_drops(self):
+        cfg = parttime_cfg(degreeFloor="本科", experienceYears=4)
+        jobs = [
+            mkjob(1, degree="硕士", experience="5-10年"),
+            mkjob(2, company="乙", degree="学历不限", experience="经验不限"),
+            mkjob(3, company="丙", degree="本科", experience="1年以内"),
+        ]
+        cands, boundary, dropped, _ = filter.screen_jobs(jobs, cfg)
+        self.assertEqual(boundary, [])
+        self.assertEqual(dropped, [])
+        by_id = {c["id"]: c for c in cands}
+        self.assertIn("degree_above", by_id["i1"]["ruleFlags"])
+        self.assertIn("exp_short", by_id["i1"]["ruleFlags"])
+        self.assertNotIn("ruleFlags", by_id["i2"])
+        self.assertEqual(by_id["i3"]["ruleFlags"], ["exp_over"])
+
+    def test_degree_flag_skipped_when_floor_unset(self):
+        cands, _, _, _ = filter.screen_jobs(
+            [mkjob(1, degree="硕士", experience="5-10年")], parttime_cfg())
+        self.assertNotIn("ruleFlags", cands[0])
+
+    def test_abandon_hides_low_daymax_from_review(self):
+        _, boundary, _, _ = filter.screen_jobs([mkjob(1, salary="20-30元/时")], parttime_cfg())
+        self.assertEqual(boundary[0]["dayMax"], 120)  # 30×4
+        review, abandon = filter.grade_boundary(boundary, 150)
+        self.assertEqual(review, [])
+        self.assertEqual(abandon[0]["boundaryGrade"], "abandon")
+        self.assertEqual(filter.render_table([], review).splitlines(), [filter.render_table([], []).splitlines()[0]])
+
+    def test_work_cycle_dash_until_detail(self):
+        cands, _, _, _ = filter.screen_jobs([mkjob(1)], parttime_cfg())
+        self.assertIn("	-	", filter.render_table(cands, []))
+        known = {"i1": {"deadline": "时间：2025-04-12", "expired": True,
+                        "hrActivity": "半年前活跃", "workCycle": "5天及以上",
+                        "jdFlags": ["school_211", "time_window"]}}
+        _, boundary, _, _ = filter.screen_jobs(
+            [mkjob(1, salary="20-30元/时")], parttime_cfg(), known_details=known)
+        self.assertTrue(boundary[0]["deadlineExpired"])
+        self.assertEqual(boundary[0]["workCycle"], "5天及以上")
+        self.assertIn("dead_post", boundary[0]["ruleFlags"])
+        self.assertIn("school_211", boundary[0]["ruleFlags"])
+        table = filter.render_table([], boundary)
+        self.assertIn("5天及以上", table)
+        self.assertIn("dead_post", table)
+
+
+class DetailHardFlags(unittest.TestCase):
+    def test_scan_tongrui_and_bulin_patterns(self):
+        flags = scan_jd_flags(
+            "1、211/985 学校毕业\n3、每周能拿出 18 小时左右\n晚上 8:00-9:00 开会",
+            {"工作时间": "不限", "每周工期": "无要求"})
+        self.assertIn("school_211", flags)
+        self.assertIn("weekly_hours", flags)
+        self.assertNotIn("time_window", flags)
+        self.assertNotIn("weekly_days", flags)
+        flags = scan_jd_flags("工作时间【工作日10-20点】", {"工作时间": "10:00-20:00", "每周工期": "5天及以上"})
+        self.assertIn("time_window", flags)
+        self.assertIn("weekly_days", flags)
+
+    def test_master_requires_requirement_context(self):
+        self.assertEqual(scan_jd_flags("团队里有硕士同事", {}), [])
+        self.assertIn("degree_master", scan_jd_flags("学历要求：硕士及以上", {}))
+
+    def test_collect_links_accepts_ids_and_dedupes(self):
+        links = detail.collect_links(None, "abc,https://www.zhipin.com/job_detail/abc.html", None)
+        self.assertEqual(links, ["https://www.zhipin.com/job_detail/abc.html"])
+
+    def test_build_payload_writes_jd_flags(self):
+        payload = detail.build_payload(
+            "https://www.zhipin.com/job_detail/abc.html",
+            "本周活跃\n工作时间：10:00-20:00\n211/985 学校毕业",
+            "211/985 学校毕业")
+        self.assertEqual(payload["id"], "abc")
+        self.assertIn("school_211", payload["jdFlags"])
+        self.assertIn("time_window", payload["jdFlags"])
+
+    def test_sidebar_recommendation_is_not_this_job(self):
+        payload = detail.build_payload(
+            "https://www.zhipin.com/job_detail/abc.html",
+            "其他岗位（每周20小时）\n工作时间：不限",
+            "负责前端开发")
+        self.assertNotIn("weekly_hours", payload["jdFlags"])
+
+    def test_old_detail_file_rescanned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "detail-abc.json"
+            path.write_text(
+                '{"id":"abc","jdText":"211/985 学校毕业","rawText":"","hrActivity":"刚刚活跃",'
+                '"terms":{"工作时间":"不限","每周工期":"无要求"}}',
+                encoding="utf-8")
+            marks = filter.load_detail_marks(Path(tmp))
+            self.assertIn("school_211", marks["abc"]["jdFlags"])
+            self.assertNotIn("time_window", marks["abc"]["jdFlags"])
+
+
+class RoundAndPlan(unittest.TestCase):
+    def test_merge_rounds_dedupes_by_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            prior = root / "jobs-2026-10-21-0900.json"
+            latest = root / "jobs-2026-10-21.json"
+            prior.write_text('{"jobs":[{"id":"a","job":"旧"},{"id":"b","job":"只在旧"}]}', encoding="utf-8")
+            latest.write_text('{"jobs":[{"id":"a","job":"新"},{"id":"c","job":"只在新"}]}', encoding="utf-8")
+            jobs, meta = filter.merge_round_jobs(latest)
+            by_id = {j["id"]: j["job"] for j in jobs}
+            self.assertEqual(by_id["a"], "新")
+            self.assertEqual(set(by_id), {"a", "b", "c"})
+            self.assertEqual(meta["new_ids"], {"c"})
+            self.assertEqual(meta["overlap"], 1)
+
+    def test_plan_target_uses_measured_rate(self):
+        plan = filter.plan_target(10, 3, 0)
+        self.assertEqual(plan["fetched_needed"], 167)  # ceil(10/0.06)
+        self.assertEqual(plan["pages_suggest"], 4)     # ceil(167/45)
+        self.assertEqual(filter.plan_target(0, 3)["pages_suggest"], 0)
+
+    def test_config_confirm_shows_formula_not_default_8h(self):
+        text = filter.format_config_confirm({"hoursPerDay": 4, "salaryFloorDay": 300, "headed": False, "jobType": "1903"})
+        self.assertIn("CONFIG_CONFIRM", text)
+        self.assertIn("不得默认 8", text)
+        self.assertIn("月薪 ÷ 22", text)
+        self.assertIn("hoursPerDay=4", text)
+        self.assertNotIn("21.75", text.split("不是 21.75")[0])
+
+
+class SessionBudget(unittest.TestCase):
+    def test_under_budget_does_not_wait(self):
+        sessions = [{"kind": "detail", "at": "2026-10-21T09:00:00"} for _ in range(6)]
+        now = time.mktime(time.strptime("2026-10-21T09:01:00", "%Y-%m-%dT%H:%M:%S"))
+        self.assertEqual(cooldown_wait_sec(sessions, now=now), 0)
+
+    def test_over_budget_waits_remainder_from_last_session(self):
+        sessions = [{"kind": "detail", "at": "2026-10-21T09:00:00"} for _ in range(7)]
+        sessions.append({"kind": "apply", "at": "2026-10-21T09:10:00"})
+        now = time.mktime(time.strptime("2026-10-21T09:11:00", "%Y-%m-%dT%H:%M:%S"))
+        self.assertEqual(cooldown_wait_sec(sessions, now=now), 120)
+        later = time.mktime(time.strptime("2026-10-21T09:14:00", "%Y-%m-%dT%H:%M:%S"))
+        self.assertEqual(cooldown_wait_sec(sessions, now=later), 0)
+
+    def test_apply_sessions_do_not_trip_budget(self):
+        sessions = [{"kind": "apply", "at": "2026-10-21T09:00:00"} for _ in range(9)]
+        now = time.mktime(time.strptime("2026-10-21T09:00:30", "%Y-%m-%dT%H:%M:%S"))
+        self.assertEqual(cooldown_wait_sec(sessions, now=now), 0)
+
+    def test_record_session_is_one_line_per_process(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _lib.record_session("detail", root=root, at="2026-10-21T09:00:00")
+            _lib.record_session("detail", root=root, at="2026-10-21T09:05:00")
+            rows = _lib.read_sessions(root=root, day="2026-10-21")
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]["kind"], "detail")
+
+
+class ReplyStatus(unittest.TestCase):
+    def test_invalid_and_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "delivered.json"
+            dest.write_text('{"delivered":{}}', encoding="utf-8")
+            self.assertIn("REPLY_STATUS_INVALID", _lib.set_reply_status("abc", "maybe", dest))
+            self.assertIn("REPLY_STATUS_MISSING", _lib.set_reply_status("abc", "read", dest))
+
+    def test_remark_does_not_wipe_reply_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "delivered.json"
+            orig = _lib.DELIVERED_PATH
+            _lib.DELIVERED_PATH = dest
+            try:
+                _lib.mark_delivered({"link": "https://www.zhipin.com/job_detail/abc.html", "job": "前端", "company": "甲"})
+                self.assertEqual(_lib.set_reply_status("abc", "read", dest), "")
+                _lib.mark_delivered({"link": "https://www.zhipin.com/job_detail/abc.html", "job": "前端", "company": "甲"})
+                data = json.loads(dest.read_text(encoding="utf-8"))
+                self.assertEqual(data["delivered"]["abc"]["replyStatus"], "read")
+            finally:
+                _lib.DELIVERED_PATH = orig
+
+    def test_note_verify_updates_existing_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "delivered.json"
+            dest.write_text('{"delivered":{"abc":{"job":"前端"}}}', encoding="utf-8")
+            _lib.note_verify("abc", "ok", "招呼语已在聊天记录", dest)
+            _lib.note_verify("missing", "missing", "无", dest)
+            data = json.loads(dest.read_text(encoding="utf-8"))
+            self.assertEqual(data["delivered"]["abc"]["verifyStatus"], "ok")
+            self.assertNotIn("missing", data["delivered"])
+
+
+class ShowConfigCli(unittest.TestCase):
+    def test_missing_fields_refuse_ack(self):
+        script = Path(__file__).resolve().parent / "filter.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "config.json"
+            cfg.write_text('{"jobType":"1903","keywords":["前端"]}', encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, str(script), "--config-path", str(cfg), "--show-config", "--ack"],
+                capture_output=True, text=True, check=False)
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("CONFIG_MISSING", proc.stdout)
+            self.assertIn("CONFIG_ACK_REFUSED", proc.stdout)
+            self.assertNotIn("confirmedAt", cfg.read_text(encoding="utf-8"))
+
+
+class WorkflowContracts(unittest.TestCase):
+    def test_skill_requires_confirm_batch_detail_and_verify(self):
+        text = SKILL.read_text(encoding="utf-8")
+        self.assertIn("--show-config", text)
+        self.assertIn("--plan-target", text)
+        self.assertIn("--links", text)
+        self.assertIn("--merge-rounds", text)
+        self.assertIn("--verify", text)
+        self.assertIn("COOLDOWN_REQUIRED", text)
+        self.assertNotIn("别当日常流程跑", text)
+        self.assertIn("不得代确认", text)
+        self.assertIn("pages[].bodyTextHead", text)
+        for rel in ("search.py", "detail.py", "apply.py"):
+            src = (Path(__file__).resolve().parent / rel).read_text(encoding="utf-8")
+            self.assertIn("record_session", src)
+        apply_src = (Path(__file__).resolve().parent / "apply.py").read_text(encoding="utf-8")
+        self.assertIn("COOLDOWN_REQUIRED", apply_src)
+        self.assertIn("VERIFY_REQUIRED", apply_src)
+        self.assertIn("note_verify", apply_src)
+        self.assertNotIn("skip-cooldown", apply_src)
+        self.assertNotIn("--skip-cooldown", apply_src)
 
 
 if __name__ == "__main__":
