@@ -57,7 +57,7 @@ $VENV/bin/python scripts/boss/login.py    # 弹窗扫码，10 分钟超时
 ```
 投递进度:
 - [ ] login.py --check 已确认登录态（此步不弹窗）
-- [ ] 已询问今日目标 N；--show-config 已展示并经用户确认（含折算公式）
+- [ ] 已询问今日目标 N；--show-config 已展示并经用户确认（含折算公式与弹窗位置）
 - [ ] 搜索→筛选已循环到可投≥N 或源耗尽（ROUND new_candidates<2），未超额
 - [ ] 勾选前已批量拉详情，最终表含硬条件标；用户在已核实表上勾选
 - [ ] 招呼语已逐条确认；定制简历只落盘
@@ -69,7 +69,7 @@ $VENV/bin/python scripts/boss/login.py    # 弹窗扫码，10 分钟超时
 
 ### 第一步：登录、目标、确认参数
 
-1. `$VENV/bin/python scripts/boss/login.py --check`。失效则 `login.py` 扫码（弹窗，10 分钟超时）。cookie 库读失败是退出码 1，不要当成未登录去重扫
+1. `$VENV/bin/python scripts/boss/login.py --check`。失效则先问完弹窗位置并写入 config，再 `login.py` 扫码（弹窗，10 分钟超时）——不要先弹到 Chrome 记住的位置再问。cookie 库读失败是退出码 1，不要当成未登录去重扫
 2. 问「今天希望投几条」。没给 N 就停下，不要假设
 3. 打印并等待确认（不要静默沿用上次配置）：
 
@@ -78,13 +78,25 @@ $VENV/bin/python scripts/boss/filter.py --show-config
 $VENV/bin/python scripts/boss/filter.py --plan-target <N>
 ```
 
-展示 `CONFIG_CONFIRM`（时薪/日薪/月薪折算、`headed`、`hoursPerDay`、`salaryFloorDay`、`degreeFloor`、`experienceYears`）和 `TARGET_PLAN`。出现 `CONFIG_MISSING` 先补问写回，不要把退出码或其它输出当成已确认。用户要改就改 `config.json` 再复述。`hoursPerDay` 必须是用户自己的数，不得默认 8。用户明确确认后才：
+展示 `CONFIG_CONFIRM`（时薪/日薪/月薪折算、`headed`、`hoursPerDay`、`salaryFloorDay`、`degreeFloor`、`experienceYears`、弹窗位置）和 `TARGET_PLAN`。出现 `CONFIG_MISSING` 先补问写回，不要把退出码或其它输出当成已确认。用户要改就改 `config.json` 再复述。`hoursPerDay` 必须是用户自己的数，不得默认 8。
+
+弹窗位置和上面一起问，不要留到搜索之后。转述时单独问「浏览器弹窗位置要调整吗」，并给出 `windowPosition`、`chromeRemembered`、`windowPresets`。`chromeRemembered` 在左上角（如 0,30）是负坐标被夹回来后记住的，不是用户选过的位置，要说清楚。用户没回答之前不要 `--ack`，也不要搜索。要调整才运行（不要代选角落）：
+
+```bash
+$VENV/bin/python scripts/boss/filter.py --set-window 右下
+# 或 --set-window 1200,80
+# 或 --set-window 1200,80 900x700
+# 左侧副屏的负坐标必须写成 --set-window=-1800,80（空格后的负号会被当成另一个参数）
+# 取消固定位置：--set-window clear
+```
+
+写完再 `--show-config` 复述。用户明确说不调整，或调整后确认整份配置，才：
 
 ```bash
 $VENV/bin/python scripts/boss/filter.py --show-config --ack
 ```
 
-不得代确认，不得在确认前加 `--ack`。第五步不再单独问 `headed`。
+不得代确认，不得在确认前加 `--ack`。第五步不再单独问 `headed` 或弹窗位置。
 
 ### 第二步：搜索到目标或源耗尽
 
@@ -134,7 +146,7 @@ $VENV/bin/python scripts/boss/detail.py --links <id>,<id>,...
 
 ### 第五步：投递
 
-`headed` 以已确认的 config 为准，这里不再问。`headed=true` 时两条命令都加 `--headed`。
+`headed` 和弹窗位置都以已确认的 config 为准，这里不再问。`headed=true` 时两条命令都加 `--headed`。
 
 ```bash
 $VENV/bin/python scripts/boss/apply.py --plan <plan路径>
@@ -168,6 +180,7 @@ $VENV/bin/python scripts/boss/apply.py --set-reply <岗位id> read
 | 现象 | 处置 |
 |------|------|
 | `CONFIG_MISSING` | 补问后写回再跑。`hoursPerDay` 不得默认 8 |
+| `WINDOW_POSITION_INVALID` | 坐标离屏或不成对。用 `--set-window` 的预设或屏幕内坐标，不要写 -32000 |
 | `LOGIN_EXPIRED` | `login.py` 重扫。`--check` 退出码 1 是 cookie 库读失败，不是过期 |
 | `stopped=no_api` | 未登录或风控；反复出现则按 `references/boss-zhipin.md` 更新 `map_job` |
 | `captcha` | 降 `dailyLimit`、拉大 `delaySec`、冷却；`--headed` 人工过验 |

@@ -38,7 +38,7 @@ def parse_args():
     parser.add_argument("--out", help="输出 JSON 路径")
     parser.add_argument("--config", action="store_true", help="使用 config.json 的 keywords")
     parser.add_argument("--job-type", dest="job_type", help="招聘类型筛选（1903=兼职），默认取 config.jobType")
-    parser.add_argument("--headed", action="store_true", help="前台显示浏览器窗口（默认隐藏窗口后台运行；后台触发风控时加此参数重试）")
+    parser.add_argument("--headed", action="store_true", help="前台显示浏览器窗口（默认留在当前应用下面；后台触发风控时加此参数重试）")
     args = parser.parse_args()
     raw_config = read_json(CONFIG_PATH, {})
     missing, ignored = config_gaps(raw_config)
@@ -132,7 +132,7 @@ def main() -> int:
                         diag = goto_guarded(page, url)
                     if diag:
                         if not args.headed:
-                            diag += "（当前是屏幕外有头窗口。可加 --headed 在前台人工过验后重试）"
+                            diag += "（当前窗口在当前应用下面，不在前台。可加 --headed 在前台人工过验后重试）"
                         print(f"RISK_BLANK {diag}")
                         stopped = "blank"
                         break

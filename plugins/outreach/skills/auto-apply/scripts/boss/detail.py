@@ -158,7 +158,7 @@ def main() -> int:
     parser.add_argument("--link", help="单个岗位详情页链接或岗位 id")
     parser.add_argument("--links", help="逗号分隔的多个链接或岗位 id，单会话顺序抓取")
     parser.add_argument("--links-file", help="一行一个链接/id，或 JSON 数组")
-    parser.add_argument("--headed", action="store_true", help="前台显示浏览器窗口（默认读 config.headed）")
+    parser.add_argument("--headed", action="store_true", help="前台显示浏览器窗口（默认读 config.headed；false 时留在当前应用下面）")
     args = parser.parse_args()
     links = collect_links(args.link, args.links, args.links_file)
     if not links:

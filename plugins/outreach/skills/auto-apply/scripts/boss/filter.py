@@ -8,6 +8,7 @@
 用法:
     python filter.py --show-config          # 打印当前配置与折算公式，不读 jobs
     python filter.py --show-config --ack    # 用户确认后写入 confirmedAt（不得代确认）
+    python filter.py --set-window 右下      # 写弹窗位置（预设 / x,y / x,y WxH / clear），不算确认
     python filter.py --plan-target 10       # 按今日目标条数给建议抓取页数
     python filter.py --table                # 最新 jobs-*.json，stdout 紧凑评分表
     python filter.py --table --merge-rounds # 合并同日 jobs-<日期>*.json，按岗位 id 去重
@@ -28,9 +29,11 @@ import sys
 import time
 from pathlib import Path
 
-from _lib import (BOSS_DIR, CITIES, CONFIG_PATH, DEFAULT_CONFIG, config_gaps,
-                  deadline_expired, hr_long_inactive, parse_salary, read_json,
-                  rotate_existing, scan_jd_flags, write_json)
+from _lib import (BOSS_DIR, CITIES, CONFIG_PATH, DEFAULT_CONFIG, apply_window_config,
+                  config_gaps, deadline_expired, display_bounds, hr_long_inactive,
+                  main_display_bounds, parse_salary, read_json, remembered_window,
+                  resolve_window, rotate_existing, scan_jd_flags, window_presets,
+                  write_json)
 
 # 折算常量与依据：
 HARD_CUT = 0.85             # matching.md：上限低于期望下限的 85% 才算硬伤，留 15% 谈判空间
@@ -368,7 +371,42 @@ def screen_jobs(jobs: list[dict], cfg: dict, known_details: dict[str, dict] | No
     return candidates, boundary, dropped, stats
 
 
-def format_config_confirm(cfg: dict) -> str:
+def format_window_confirm(cfg: dict, *, probe: bool = False) -> str:
+    """弹窗位置块。probe 时读主屏预设和 Chrome 记住的位置，供启动询问。"""
+    displays = display_bounds() if probe else None
+    bounds = main_display_bounds() if probe else None
+    spec, err = resolve_window(cfg, displays=displays)
+    lines = []
+    if err:
+        lines.append(err)
+    elif spec:
+        size = f" {spec['width']}x{spec['height']}" if spec.get("width") else "（不改大小）"
+        lines.append(f"windowPosition={spec['x']},{spec['y']}{size}")
+    else:
+        lines.append("windowPosition=<未设置，沿用 Chrome 上次记住的位置>")
+    if probe:
+        remembered = remembered_window()
+        if remembered:
+            size = ""
+            if remembered.get("width") and remembered.get("height"):
+                size = f" {remembered['width']}x{remembered['height']}"
+            lines.append(f"chromeRemembered={remembered['x']},{remembered['y']}{size}")
+        presets = window_presets(bounds)
+        if presets:
+            parts = [f"{name}={p['x']},{p['y']} {p['width']}x{p['height']}" for name, p in presets.items()]
+            lines.append("windowPresets: " + " | ".join(parts))
+        else:
+            lines.append("windowPresets: <读不到主屏，请手写 x,y>")
+        if displays and len(displays) > 1:
+            parts = [f"{x},{y} {w}x{h}" for x, y, w, h in displays]
+            lines.append("windowDisplays: " + " | ".join(parts) + "（预设在主屏；副屏手写坐标）")
+    lines.append("弹窗位置：运行前询问是否调整。要改用 filter.py --set-window"
+                 "（左上/右上/左下/右下、x,y 或 x,y WxH）；不调整保持当前值。"
+                 "负坐标写成 --set-window=-1800,80。离屏坐标会被拒绝，不要写 -32000。")
+    return "\n".join(lines)
+
+
+def format_config_confirm(cfg: dict, *, probe_window: bool = False) -> str:
     """启动确认块：关键字段 + 与 convert_unit 相同的折算公式。只读。"""
     hpd = cfg.get("hoursPerDay")
     floor = cfg.get("salaryFloorDay")
@@ -399,7 +437,8 @@ def format_config_confirm(cfg: dict) -> str:
         lines.append("  below_floor: 缺 salaryFloorDay，无法算硬切线")
     lines.append(f"  hourly_too_high: 时薪上限 > {HOURLY_CAP}")
     lines.append(f"  建议放弃: below_floor 且日上限 < {ABANDON_DAY_MAX}（--boundary-min 0 展开）")
-    lines.append("请确认或调整上述字段后再搜索。用户明确确认后才加 --ack；不得代确认。")
+    lines.extend(format_window_confirm(cfg, probe=probe_window).splitlines())
+    lines.append("请确认或调整上述字段（含弹窗位置）后再搜索。用户明确确认后才加 --ack；不得代确认。")
     return "\n".join(lines)
 
 
@@ -442,15 +481,23 @@ def main() -> int:
                         help="below_floor 日上限低于此值归建议放弃，不进 stdout 表（0=全部展开）")
     parser.add_argument("--show-config", action="store_true", help="打印配置与折算公式，不启动浏览器")
     parser.add_argument("--ack", action="store_true", help="用户确认配置后写入 confirmedAt。不得在确认前使用")
+    parser.add_argument("--set-window", metavar="POS",
+                        help="写入弹窗位置：左上/右上/左下/右下、x,y、x,y WxH，或 clear。负坐标必须 --set-window=-1800,80。不启动浏览器，不算确认")
     parser.add_argument("--plan-target", type=int, help="今日目标投递条数，打印建议抓取量")
     parser.add_argument("--already", type=int, default=0, help="本目标下已抓取条数，配合 --plan-target")
     args = parser.parse_args()
 
     config_path = Path(args.config_path) if args.config_path else CONFIG_PATH
     raw_cfg = read_json(config_path, {})
+    if args.set_window is not None:
+        msg = apply_window_config(config_path, args.set_window)
+        print(msg)
+        if not msg.startswith(("WINDOW_SET", "WINDOW_CLEARED")):
+            return 1
+        raw_cfg = read_json(config_path, {})
     missing, ignored = config_gaps(raw_cfg)
     if args.show_config or args.ack:
-        print(format_config_confirm({**DEFAULT_CONFIG, **raw_cfg}))
+        print(format_config_confirm({**DEFAULT_CONFIG, **raw_cfg}, probe_window=True))
         for k in ignored:
             print(f"IGNORED {k}（列表接口没有活跃天数，该配置无效）")
         if missing:
@@ -470,6 +517,11 @@ def main() -> int:
         print(format_target_plan(plan))
     confirm_only = (args.show_config or args.ack or args.plan_target is not None) and not (
         args.table or args.jobs or args.merge_rounds)
+    window_only = args.set_window is not None and not (
+        args.show_config or args.ack or args.plan_target is not None
+        or args.table or args.jobs or args.merge_rounds)
+    if window_only:
+        return 0
     if confirm_only:
         return 1 if missing else 0
 

@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--plan", help="投递计划 JSON 路径")
     parser.add_argument("--execute", action="store_true", help="真实发送（默认 dry-run）")
     parser.add_argument("--limit", type=int, default=0, help="本次最多处理 N 个岗位（0=不限）")
-    parser.add_argument("--headed", action="store_true", help="前台显示浏览器窗口（默认隐藏窗口后台运行；真实发送建议前台便于观察）")
+    parser.add_argument("--headed", action="store_true", help="前台显示浏览器窗口（默认留在当前应用下面；真实发送可加此参数观察）")
     parser.add_argument("--retry", action="store_true", help="忽略 7 天台账防重，重新处理失败批次（补发场景；已沟通岗位按聊天记录内容去重，不会重发）")
     parser.add_argument("--verify", action="store_true", help="只读核实：逐岗打开详情，仅已沟通的进会话比对招呼语是否在聊天记录；不点击「立即沟通」、不发送。execute 后必跑，与 execute/retry 共用冷却预算")
     parser.add_argument("--set-reply", nargs=2, metavar=("ID", "STATUS"),

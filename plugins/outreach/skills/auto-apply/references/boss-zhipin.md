@@ -27,7 +27,8 @@
 
 - **必须直连**：系统代理/Clash 出口（境外或机房 IP）命中风控——症状是登录页先正常加载、几秒后整页被打成空白（`about:blank`）。若用户开 TUN 模式（全局接管），脚本绕不过，须手动关
 - **真实 Chrome 通道**：脚本 `channel="chrome"` 优先用本机 Chrome；捆绑 Chromium 的内核版本与 UA 存在 `userAgentData` 指纹矛盾，检测风险更高
-- **后台运行 = 屏幕外隐藏窗口，而非无头**：无头模式响应体被跳转销毁且 patchright 对 headless 不做反检测补丁；屏幕外定位（`--window-position=-32000,-32000`）实测 `visibilityState=visible`/`hasFocus=true` 与前台完全一致，指纹无差异。脚本默认隐藏窗口后台跑，`--headed` 才显示窗口（登录必显）
+- **后台运行 = 有头窗口留在当前应用下面，而非无头、也非屏幕外**：无头模式响应体被跳转销毁且 patchright 对 headless 不做反检测补丁。`--window-position` 负到屏幕外（如 -32000）在 macOS 上会被夹回工作区左上角，并写回 profile，下次直接恢复到左上角。跨进程改窗口层级会被窗口服务器忽略。`visible=False` 时 Chrome 一抢到最前面，就把焦点还给用户正在用的应用（`window_sink.py`），窗口留在那个应用下面。`--headed` / 登录仍前台显示。被挡住时关闭 `CalculateNativeWinOcclusion`，避免页面被当成 hidden；`hasFocus` 不再保证为 true。
+- **弹窗位置可配置**：`windowX`/`windowY`（可选 `windowWidth`/`windowHeight`）在 `config.json`。每次启动用 `filter.py --show-config` 询问是否调整，`--set-window` 写入预设或坐标。未设置则沿用 Chrome 记住的位置。启动时同时写 Preferences 的 `window_placement` 并用 CDP `setWindowBounds`，因为只传 `--window-position` 会被记住的位置盖掉。登录窗用同一套位置。
 - **验证码是频次累积信号**：同 profile 短时间高频访问会升级出 geetest 图形题（与窗口位置无关）。处置：`--headed` 人工过验。搜索页 headed 时等待 joblist 最长 180s，期间可过验；投递遇到验证码立即停止，不会再等。冷却几分钟、降频次
 - **空白页防护**：`goto_guarded()` 统一包装导航，跳白自动重试 2 次（截图留证），仍失败返回诊断文案。触发时排查：确认装了 patchright → 关代理/TUN → 换网络 → 稍后再试
 - **profile 污染**：一次被标记的风控事件会让 profile 的安全 cookie 被拉黑，之后换浏览器换网络都无效。处置：`rm -rf ~/.poseidon/outreach/boss/profile` 重新扫码

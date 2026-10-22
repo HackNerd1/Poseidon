@@ -573,7 +573,15 @@ class WorkflowContracts(unittest.TestCase):
         self.assertIn("COOLDOWN_REQUIRED", text)
         self.assertNotIn("别当日常流程跑", text)
         self.assertIn("不得代确认", text)
+        self.assertIn("弹窗位置要调整吗", text)
+        self.assertIn("--set-window", text)
+        self.assertIn("没回答之前不要", text)
         self.assertIn("pages[].bodyTextHead", text)
+        lib_src = (Path(__file__).resolve().parent / "_lib.py").read_text(encoding="utf-8")
+        self.assertNotIn("OFFSCREEN_POS", lib_src)
+        self.assertNotIn('arg_list.append("--window-position=-32000', lib_src)
+        search_src = (Path(__file__).resolve().parent / "search.py").read_text(encoding="utf-8")
+        self.assertNotIn("屏幕外有头窗口", search_src)
         for rel in ("search.py", "detail.py", "apply.py"):
             src = (Path(__file__).resolve().parent / rel).read_text(encoding="utf-8")
             self.assertIn("record_session", src)
@@ -583,6 +591,109 @@ class WorkflowContracts(unittest.TestCase):
         self.assertIn("note_verify", apply_src)
         self.assertNotIn("skip-cooldown", apply_src)
         self.assertNotIn("--skip-cooldown", apply_src)
+
+
+class WindowPosition(unittest.TestCase):
+    def test_unset_confirm_asks_before_run(self):
+        text = filter.format_config_confirm({"headed": False})
+        self.assertIn("windowPosition=<未设置", text)
+        self.assertIn("弹窗位置", text)
+        self.assertIn("--set-window", text)
+        self.assertIn("含弹窗位置", text)
+
+    def test_configured_position_shown(self):
+        text = filter.format_config_confirm({
+            "windowX": 1200, "windowY": 80, "windowWidth": 520, "windowHeight": 720})
+        self.assertIn("windowPosition=1200,80 520x720", text)
+
+    def test_far_negative_rejected(self):
+        spec, err = _lib.parse_window_value("-32000,-32000")
+        self.assertIsNone(spec)
+        self.assertIn("WINDOW_POSITION_INVALID", err)
+
+    def test_xy_and_size_on_injected_display(self):
+        displays = [(0, 0, 1920, 1080)]
+        spec, err = _lib.parse_window_value("1200,80 900x700", displays=displays)
+        self.assertIsNone(err)
+        self.assertEqual(spec, {"x": 1200, "y": 80, "width": 900, "height": 700})
+
+    def test_preset_uses_injected_bounds(self):
+        spec, err = _lib.parse_window_value("右下", bounds=(0, 0, 1920, 1080))
+        self.assertIsNone(err)
+        self.assertEqual(spec["x"], 1920 - 640 - 40)
+        self.assertEqual(spec["y"], 1080 - 800 - 40)
+        self.assertEqual(spec["width"], 640)
+
+    def test_left_monitor_negative_ok(self):
+        displays = [(-1920, 0, 1920, 1080), (0, 0, 1920, 1080)]
+        spec, err = _lib.parse_window_value("-1800,80 520x720", displays=displays)
+        self.assertIsNone(err)
+        self.assertEqual(spec["x"], -1800)
+
+    def test_off_screen_rejected_when_displays_known(self):
+        spec, err = _lib.parse_window_value("9000,80", displays=[(0, 0, 1920, 1080)])
+        self.assertIsNone(spec)
+        self.assertIn("WINDOW_POSITION_INVALID", err)
+
+    def test_incomplete_pair(self):
+        spec, err = _lib.resolve_window({"windowX": 10})
+        self.assertIsNone(spec)
+        self.assertIn("windowY", err)
+
+    def test_tiny_size_rejected(self):
+        spec, err = _lib.parse_window_value("40,40 100x100", displays=[(0, 0, 1920, 1080)])
+        self.assertIsNone(spec)
+        self.assertIn("宽高至少", err)
+
+    def test_write_placement_moves_origin_and_skips_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertFalse(_lib.write_window_placement(root, {"x": 10, "y": 20}))
+            pref = root / "Default" / "Preferences"
+            pref.parent.mkdir(parents=True)
+            pref.write_text(json.dumps({"browser": {"window_placement": {
+                "left": 0, "top": 30, "right": 1512, "bottom": 889, "maximized": True,
+                "work_area_left": 0}}}), encoding="utf-8")
+            self.assertTrue(_lib.write_window_placement(root, {"x": 100, "y": 40}))
+            wp = json.loads(pref.read_text(encoding="utf-8"))["browser"]["window_placement"]
+            self.assertEqual((wp["left"], wp["top"], wp["right"], wp["bottom"]), (100, 40, 1612, 899))
+            self.assertFalse(wp["maximized"])
+            self.assertEqual(wp["work_area_left"], 0)
+
+    def test_apply_window_writes_and_clears_without_probing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "config.json"
+            cfg.write_text('{"headed": false}', encoding="utf-8")
+            displays = [(0, 0, 1920, 1080)]
+            msg = _lib.apply_window_config(cfg, "1200,80 520x720", displays=displays, probe=False)
+            self.assertTrue(msg.startswith("WINDOW_SET"))
+            data = json.loads(cfg.read_text(encoding="utf-8"))
+            self.assertEqual(data["windowX"], 1200)
+            self.assertEqual(data["windowHeight"], 720)
+            cleared = _lib.apply_window_config(cfg, "clear", probe=False)
+            self.assertIn("WINDOW_CLEARED", cleared)
+            self.assertNotIn("windowX", json.loads(cfg.read_text(encoding="utf-8")))
+
+    def test_set_window_cli_rejects_far_negative(self):
+        script = Path(__file__).resolve().parent / "filter.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "config.json"
+            cfg.write_text('{"headed": false}', encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, str(script), "--config-path", str(cfg), "--set-window=-32000,-32000"],
+                capture_output=True, text=True, check=False)
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("WINDOW_POSITION_INVALID", proc.stdout)
+            self.assertNotIn("windowX", cfg.read_text(encoding="utf-8"))
+
+    def test_chromium_args_and_cdp_payload(self):
+        self.assertEqual(_lib.window_chromium_args({"x": 1, "y": 2}), ["--window-position=1,2"])
+        self.assertEqual(
+            _lib.window_chromium_args({"x": 1, "y": 2, "width": 3, "height": 4}),
+            ["--window-position=1,2", "--window-size=3,4"])
+        payload = _lib.window_bounds_payload({"x": 1, "y": 2, "width": 3, "height": 4})
+        self.assertEqual(payload["windowState"], "normal")
+        self.assertEqual(payload["left"], 1)
 
 
 if __name__ == "__main__":

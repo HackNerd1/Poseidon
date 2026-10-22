@@ -11,6 +11,7 @@ import re
 import shutil
 import sqlite3
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -141,25 +142,343 @@ BASE_LAUNCH_ARGS = [
 ]
 
 
-# 屏幕外窗口定位：保持有头浏览器指纹（无头模式被 Boss 风控识别，且 patchright
-# 对 headless 不做反检测补丁），又不弹窗打扰用户——「后台运行」的实现方式
-OFFSCREEN_POS = "--window-position=-32000,-32000"
+# 后台窗口不使用负坐标。macOS 会把 --window-position=-32000 夹回工作区左上角，
+# 再写回 profile，下次启动直接盖住画面（2026-10-21）。visible=False 改由 window_sink
+# 把焦点还给当前应用。位置若配置了，启动时写进 Preferences 并用 CDP 再摆一次：
+# 只传 --window-position 会被记住的 window_placement 盖掉。
+
+WINDOW_KEYS = ("windowX", "windowY", "windowWidth", "windowHeight")
+PRESET_NAMES = ("左上", "右上", "左下", "右下")
+PRESET_MARGIN = 40
+PRESET_WIDTH = 640
+PRESET_HEIGHT = 800
+MIN_WINDOW = 320
+_FAR_COORD = 20000
+_XY_RE = re.compile(r"^(-?\d+)\s*,\s*(-?\d+)(?:\s+(\d+)\s*[xX×]\s*(\d+))?$")
+
+
+def _cg():
+    """CoreGraphics，或 None。导入本模块时不碰系统框架。"""
+    try:
+        import ctypes
+        from ctypes import POINTER, Structure, c_double, c_int32, c_uint32
+
+        class CGPoint(Structure):
+            _fields_ = [("x", c_double), ("y", c_double)]
+
+        class CGSize(Structure):
+            _fields_ = [("width", c_double), ("height", c_double)]
+
+        class CGRect(Structure):
+            _fields_ = [("origin", CGPoint), ("size", CGSize)]
+
+        cg = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+        cg.CGMainDisplayID.restype = c_uint32
+        cg.CGDisplayBounds.argtypes = [c_uint32]
+        cg.CGDisplayBounds.restype = CGRect
+        cg.CGGetOnlineDisplayList.argtypes = [c_uint32, POINTER(c_uint32), POINTER(c_uint32)]
+        cg.CGGetOnlineDisplayList.restype = c_int32
+        return cg, c_uint32
+    except Exception:
+        return None
+
+
+def display_bounds() -> list[tuple[int, int, int, int]]:
+    """在线显示器的 (x, y, w, h)，点坐标。读不到返回空列表。
+
+    CGGetActiveDisplayList 在这台 Mac 上返回 0 块，在线列表才有主屏和副屏。
+    """
+    loaded = _cg()
+    if not loaded:
+        return []
+    import ctypes
+    cg, c_uint32 = loaded
+    try:
+        arr = (c_uint32 * 8)()
+        count = c_uint32(0)
+        err = cg.CGGetOnlineDisplayList(8, arr, ctypes.byref(count))
+        rects = []
+        if err == 0:
+            for i in range(count.value):
+                rect = cg.CGDisplayBounds(arr[i])
+                w, h = int(rect.size.width), int(rect.size.height)
+                if w > 0 and h > 0:
+                    rects.append((int(rect.origin.x), int(rect.origin.y), w, h))
+        if rects:
+            return rects
+        rect = cg.CGDisplayBounds(cg.CGMainDisplayID())
+        w, h = int(rect.size.width), int(rect.size.height)
+        if w > 0 and h > 0:
+            return [(int(rect.origin.x), int(rect.origin.y), w, h)]
+    except Exception:
+        return []
+    return []
+
+
+def main_display_bounds() -> tuple[int, int, int, int] | None:
+    """主屏点坐标。预设落在主屏，不落到副屏。"""
+    loaded = _cg()
+    if not loaded:
+        return None
+    cg, _ = loaded
+    try:
+        rect = cg.CGDisplayBounds(cg.CGMainDisplayID())
+        w, h = int(rect.size.width), int(rect.size.height)
+        if w <= 0 or h <= 0:
+            return None
+        return (int(rect.origin.x), int(rect.origin.y), w, h)
+    except Exception:
+        return None
+
+
+def window_presets(bounds: tuple[int, int, int, int] | None = None) -> dict[str, dict]:
+    """四角预设。bounds 缺省时读主屏；读不到返回空。"""
+    if bounds is None:
+        bounds = main_display_bounds()
+    if not bounds:
+        return {}
+    x, y, w, h = bounds
+    if w < MIN_WINDOW + 2 * PRESET_MARGIN or h < MIN_WINDOW + 2 * PRESET_MARGIN:
+        return {}
+    width = min(PRESET_WIDTH, w - 2 * PRESET_MARGIN)
+    height = min(PRESET_HEIGHT, h - 2 * PRESET_MARGIN)
+    top = y + PRESET_MARGIN
+    left = x + PRESET_MARGIN
+    right = x + w - width - PRESET_MARGIN
+    bottom = y + h - height - PRESET_MARGIN
+    size = {"width": width, "height": height}
+    return {
+        "左上": {"x": left, "y": top, **size},
+        "右上": {"x": right, "y": top, **size},
+        "左下": {"x": left, "y": bottom, **size},
+        "右下": {"x": right, "y": bottom, **size},
+    }
+
+
+def _overlaps(spec: dict, displays: list[tuple[int, int, int, int]]) -> bool:
+    w = spec.get("width") or 200
+    h = spec.get("height") or 200
+    for dx, dy, dw, dh in displays:
+        ox = min(spec["x"] + w, dx + dw) - max(spec["x"], dx)
+        oy = min(spec["y"] + h, dy + dh) - max(spec["y"], dy)
+        if ox >= 80 and oy >= 80:
+            return True
+    return False
+
+
+def _window_fits(spec: dict, displays: list[tuple[int, int, int, int]] | None) -> str | None:
+    if spec.get("width") is not None and (
+            spec["width"] < MIN_WINDOW or spec.get("height", 0) < MIN_WINDOW):
+        return f"WINDOW_POSITION_INVALID 宽高至少 {MIN_WINDOW}"
+    if not displays:
+        if abs(spec["x"]) > _FAR_COORD or abs(spec["y"]) > _FAR_COORD:
+            return ("WINDOW_POSITION_INVALID 坐标离屏幕太远。"
+                    "macOS 会把负到屏幕外的窗口夹回左上角，不要写 -32000")
+        return None
+    if not _overlaps(spec, displays):
+        return ("WINDOW_POSITION_INVALID 位置不在任何屏幕上。"
+                "左侧副屏可以用小负值；-32000 会被 macOS 夹回主屏左上角，已拒绝")
+    return None
+
+
+def parse_window_value(raw: str, bounds: tuple[int, int, int, int] | None = None,
+                       displays: list[tuple[int, int, int, int]] | None = None
+                       ) -> tuple[dict | None, str | None]:
+    """解析预设、x,y 或 x,y WxH。成功 (spec, None)，失败 (None, WINDOW_POSITION_INVALID...)。"""
+    text = (raw or "").strip()
+    if text in PRESET_NAMES:
+        spec = window_presets(bounds).get(text)
+        if not spec:
+            return None, "WINDOW_POSITION_INVALID 读不到主屏，不能用预设。请给 x,y 或 x,y WxH"
+        return dict(spec), None
+    m = _XY_RE.match(text)
+    if not m:
+        return None, "WINDOW_POSITION_INVALID 需要 左上/右上/左下/右下、x,y、x,y WxH，或 clear"
+    spec: dict = {"x": int(m.group(1)), "y": int(m.group(2))}
+    if m.group(3):
+        spec["width"] = int(m.group(3))
+        spec["height"] = int(m.group(4))
+    err = _window_fits(spec, displays)
+    if err:
+        return None, err
+    return spec, None
+
+
+def resolve_window(cfg: dict, displays: list[tuple[int, int, int, int]] | None = None
+                   ) -> tuple[dict | None, str | None]:
+    """从 config 读窗口。都没设返回 (None, None)。非法返回 (None, 错误行)。"""
+    if not any(cfg.get(k) is not None for k in WINDOW_KEYS):
+        return None, None
+    if cfg.get("windowX") is None or cfg.get("windowY") is None:
+        return None, "WINDOW_POSITION_INVALID windowX 与 windowY 必须一起设置"
+    if (cfg.get("windowWidth") is None) != (cfg.get("windowHeight") is None):
+        return None, "WINDOW_POSITION_INVALID windowWidth 与 windowHeight 必须一起设置"
+    try:
+        spec: dict = {"x": int(cfg["windowX"]), "y": int(cfg["windowY"])}
+        if cfg.get("windowWidth") is not None:
+            spec["width"] = int(cfg["windowWidth"])
+            spec["height"] = int(cfg["windowHeight"])
+    except (TypeError, ValueError):
+        return None, "WINDOW_POSITION_INVALID 坐标必须是整数"
+    err = _window_fits(spec, displays)
+    if err:
+        return None, err
+    return spec, None
+
+
+def apply_window_config(config_path: str | Path, raw: str, *,
+                        displays: list[tuple[int, int, int, int]] | None = None,
+                        bounds: tuple[int, int, int, int] | None = None,
+                        probe: bool = True) -> str:
+    """--set-window 的写回。clear 删字段。不算用户确认。"""
+    text = (raw or "").strip()
+    path = Path(config_path)
+    cfg = read_json(path, {})
+    if text == "clear":
+        if not path.exists():
+            return f"CONFIG_MISSING 没有可读的 config: {path}"
+        for k in WINDOW_KEYS:
+            cfg.pop(k, None)
+        write_json(path, cfg)
+        return "WINDOW_CLEARED 已取消固定位置，下次沿用 Chrome 记住的位置"
+    if not path.exists():
+        return f"CONFIG_MISSING 没有可读的 config: {path}。先完成首次配置再写弹窗位置"
+    if probe:
+        if displays is None:
+            displays = display_bounds()
+        if bounds is None and text in PRESET_NAMES:
+            bounds = main_display_bounds()
+    spec, err = parse_window_value(text, bounds=bounds, displays=displays)
+    if err:
+        return err
+    cfg["windowX"] = spec["x"]
+    cfg["windowY"] = spec["y"]
+    if spec.get("width") and spec.get("height"):
+        cfg["windowWidth"] = spec["width"]
+        cfg["windowHeight"] = spec["height"]
+    else:
+        cfg.pop("windowWidth", None)
+        cfg.pop("windowHeight", None)
+    write_json(path, cfg)
+    size = f" {spec['width']}x{spec['height']}" if spec.get("width") else ""
+    return f"WINDOW_SET {spec['x']},{spec['y']}{size}"
+
+
+def remembered_window(profile_dir: Path | None = None) -> dict | None:
+    """只读 Preferences 的 window_placement。读失败返回 None，不碰其它字段。"""
+    path = (Path(profile_dir) if profile_dir else PROFILE_DIR) / "Default" / "Preferences"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    wp = (data.get("browser") or {}).get("window_placement") or {}
+    if not isinstance(wp, dict) or "left" not in wp or "top" not in wp:
+        return None
+    out = {"x": int(wp["left"]), "y": int(wp["top"])}
+    if "right" in wp and "bottom" in wp:
+        out["width"] = int(wp["right"]) - int(wp["left"])
+        out["height"] = int(wp["bottom"]) - int(wp["top"])
+    return out
+
+
+def window_chromium_args(spec: dict) -> list[str]:
+    args = [f"--window-position={int(spec['x'])},{int(spec['y'])}"]
+    if spec.get("width") and spec.get("height"):
+        args.append(f"--window-size={int(spec['width'])},{int(spec['height'])}")
+    return args
+
+
+def window_bounds_payload(spec: dict) -> dict:
+    bounds = {"left": int(spec["x"]), "top": int(spec["y"]), "windowState": "normal"}
+    if spec.get("width") and spec.get("height"):
+        bounds["width"] = int(spec["width"])
+        bounds["height"] = int(spec["height"])
+    return bounds
+
+
+def write_window_placement(profile_dir: Path, spec: dict) -> bool:
+    """启动前改 window_placement，避免 Chrome 把上次夹回左上角的位置恢复回来。
+
+    Preferences 不存在时不创建：残缺文件会被当成坏 profile。
+    """
+    path = Path(profile_dir) / "Default" / "Preferences"
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"[launch] WINDOW_PREFS_SKIP {type(e).__name__}")
+        return False
+    if not isinstance(data, dict):
+        return False
+    browser = data.get("browser")
+    if not isinstance(browser, dict):
+        browser = {}
+        data["browser"] = browser
+    wp = browser.get("window_placement")
+    if not isinstance(wp, dict):
+        wp = {}
+    width = spec.get("width")
+    height = spec.get("height")
+    if width is None or height is None:
+        if all(k in wp for k in ("left", "top", "right", "bottom")):
+            width = int(wp["right"]) - int(wp["left"])
+            height = int(wp["bottom"]) - int(wp["top"])
+        else:
+            width, height = PRESET_WIDTH, PRESET_HEIGHT
+    wp = dict(wp)
+    wp["left"] = int(spec["x"])
+    wp["top"] = int(spec["y"])
+    wp["right"] = int(spec["x"]) + int(width)
+    wp["bottom"] = int(spec["y"]) + int(height)
+    wp["maximized"] = False
+    browser["window_placement"] = wp
+    write_json(path, data)
+    return True
+
+
+def place_window(ctx, spec: dict) -> None:
+    """会话恢复之后再摆一次。失败只打印，不中断投递。"""
+    pages = getattr(ctx, "pages", None)
+    page = pages[0] if pages else None
+    if page is None:
+        return
+    try:
+        session = ctx.new_cdp_session(page)
+        info = session.send("Browser.getWindowForTarget")
+        session.send("Browser.setWindowBounds", {
+            "windowId": info["windowId"],
+            "bounds": window_bounds_payload(spec),
+        })
+    except Exception as e:
+        print(f"[launch] WINDOW_PLACE_FAILED {type(e).__name__}: {e}")
 
 
 def launch(pw, visible: bool = False):
     """pw 为 sync_pw() 的返回值；persistent context 自动保存登录态。
 
-    - visible=False（默认）：有头引擎，窗口定位屏幕外，后台运行不弹窗
-    - visible=True：正常前台窗口（扫码登录、人工观察投递过程用）
+    - visible=False：有头窗口留在当前应用下面，不抢焦点。不再用屏幕外负坐标。
+    - visible=True：前台窗口（扫码登录、人工观察投递过程用）
+    - config 里的 windowX/windowY 两种模式都摆到该位置。未设置则沿用 Chrome 记住的位置。
     - 只用本机 Chrome（channel=chrome）+ 无视口模拟。勿再叠加 add_init_script，
       那会变成检测向量。Chrome 或 patchright 缺失时直接失败。
     """
     ensure_dirs()
     arg_list = list(BASE_LAUNCH_ARGS)
+    spec, err = resolve_window(read_json(CONFIG_PATH, {}), displays=display_bounds())
+    if err:
+        print(err)
+        spec = None
+    stop = threading.Event()
     if not visible:
-        arg_list.append(OFFSCREEN_POS)
+        from window_sink import occlusion_arg, start_keep_behind
+        arg_list.append(occlusion_arg())
+        stop = start_keep_behind(PROFILE_DIR)
+    if spec:
+        arg_list.extend(window_chromium_args(spec))
+        write_window_placement(PROFILE_DIR, spec)
     try:
-        return pw.chromium.launch_persistent_context(
+        ctx = pw.chromium.launch_persistent_context(
             str(PROFILE_DIR),
             channel="chrome",
             no_viewport=True,
@@ -169,6 +488,7 @@ def launch(pw, visible: bool = False):
             args=arg_list,
         )
     except Exception as e:
+        stop.set()
         msg = str(e).lower()
         if any(k in msg for k in ("chrome", "channel", "executable")):
             raise SystemExit(
@@ -177,6 +497,20 @@ def launch(pw, visible: bool = False):
                 f"原因: {type(e).__name__}: {e}"
             ) from e
         raise
+    if spec:
+        place_window(ctx, spec)
+        size = f" {spec['width']}x{spec['height']}" if spec.get("width") else ""
+        print(f"[launch] WINDOW_AT {spec['x']},{spec['y']}{size}")
+    if not visible:
+        orig_close = ctx.close
+
+        def close(*args, **kwargs):
+            stop.set()
+            return orig_close(*args, **kwargs)
+
+        ctx.close = close
+        print("[launch] 后台窗口保持在当前应用下面，不抢焦点")
+    return ctx
 
 
 def goto_guarded(page, url: str, retries: int = 2) -> str | None:
