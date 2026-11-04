@@ -1,5 +1,5 @@
 ---
-name: debug
+name: debugger
 description: 'Diagnostic debug workflow. Triggers when users provide logs, describe bug symptoms, report white screen / render anomalies / data mismatches, or other runtime issues. Use cases: log-based bug analysis, canvas rendering blank, data vs expected mismatch, audio/video playback issues, third-party library debugging.'
 ---
 
@@ -34,7 +34,13 @@ After reading the provided logs, determine:
 
 > The current logs lack information about [specific stage], making it impossible to determine the root cause. Should I add logging to the code to capture [specific data]?
 
-Only add logs after the user agrees. Follow the conventions in `references/logging-guide.md` when adding logs.
+Only add logs after the user agrees. Read `references/logging-guide.md` for the shared conventions, then read only the environment reference that matches the code being instrumented:
+
+- Browser Console → `references/browser.md`
+- Node.js or other JavaScript runtime → `references/node.md`
+- Python runtime → `references/python.md`
+
+If the runtime is unclear, identify it from the project files or ask the user before choosing a logging syntax.
 
 ### Step 3: Locate & Analyze
 

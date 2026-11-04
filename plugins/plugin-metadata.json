@@ -32,7 +32,7 @@
       },
       "license": "MIT",
       "keywords": [
-        "debug",
+        "debugger",
         "diagnostic",
         "logging",
         "troubleshooting",

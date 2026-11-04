@@ -19,14 +19,16 @@ Add logs at critical nodes in the data flow:
 
 ### Format Convention
 
-Regardless of language, follow a consistent format:
+Regardless of language, follow a consistent record shape:
 
 ```
 Good log: structured, tagged, contains key data needed for decisions
-  Format: [Module.operation] key1=value1, key2=value2, ...
+  Format: [Module.operation] <serialized structured payload>
 
 Bad log: no context, ambiguous values
 ```
+
+The serialization syntax is environment-specific. Use the matching reference from `SKILL.md`: browser Console records must be emitted as one string containing `JSON.stringify(payload)`; Node.js records should be one line with `JSON.stringify(payload)`; Python records should use `json.dumps(payload)` through the standard `logging` module. These references define syntax only; placement, tags, levels, redaction, and cleanup remain governed by this guide.
 
 ### Log Levels
 
