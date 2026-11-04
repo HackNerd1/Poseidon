@@ -58,6 +58,8 @@ During diagnosis, mark all temporary logs with a `[DEBUG]` prefix for easy batch
 
 After diagnosis, search for `[DEBUG]` to locate and remove all temporary logs at once.
 
+Temporary diagnostic logs do not need feature flags, configuration switches, or other runtime controls. Add them directly when authorized, then remove the log statements after verification.
+
 ## Cleanup
 
 After diagnosis is complete and the fix is verified, remove all log statements added during the session. Keep the code clean.

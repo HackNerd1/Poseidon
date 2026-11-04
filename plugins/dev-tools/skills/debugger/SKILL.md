@@ -114,7 +114,7 @@ The summary should briefly describe the outcome — root cause found, fix applie
 3. **List causes only, don't modify**: Step 3 only outputs a list of possible causes — no code changes
 4. **Wait for explicit instruction**: only modify code after the user says "fix" / "change" / "modify" or equivalent
 5. **Minimal changes**: only modify code directly related to the issue — no opportunistic refactoring
-6. **Reversible logging**: debug logs are temporary — remove them when done, leave no trace
+6. **Reversible logging**: follow the temporary-log and cleanup guidance in `references/logging-guide.md`
 7. **Traceable records**: when the user agrees, record issues to docs/issues/ for future reference
 
 ## Edge Cases
