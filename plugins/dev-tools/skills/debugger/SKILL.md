@@ -87,12 +87,7 @@ After the fix, guide the user to verify:
 
 ### Step 7: Log Cleanup
 
-After verification passes, ask the user:
-
-> Verification passed. Should I clean up the debug logs added during diagnosis?
-
-- **User chooses cleanup**: remove all debug log statements added during this session, keeping the code clean
-- **User chooses keep**: end the workflow
+After verification passes, follow the cleanup procedure in `references/logging-guide.md`.
 
 ### Step 8: Notify Completion
 

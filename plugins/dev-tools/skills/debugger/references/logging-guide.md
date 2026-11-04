@@ -28,8 +28,6 @@ Good log: structured, tagged, contains key data needed for decisions
 Bad log: no context, ambiguous values
 ```
 
-The serialization syntax is environment-specific. Use the matching reference from `SKILL.md`: browser Console records must be emitted as one string containing `JSON.stringify(payload)`; Node.js records should be one line with `JSON.stringify(payload)`; Python records should use `json.dumps(payload)` through the standard `logging` module. These references define syntax only; placement, tags, levels, redaction, and cleanup remain governed by this guide.
-
 ### Log Levels
 
 | Level | Purpose | Common Names |
@@ -56,10 +54,8 @@ During diagnosis, mark all temporary logs with a `[DEBUG]` prefix for easy batch
 [DEBUG][Module.operation] key1=value1, ...
 ```
 
-After diagnosis, search for `[DEBUG]` to locate and remove all temporary logs at once.
-
-Temporary diagnostic logs do not need feature flags, configuration switches, or other runtime controls. Add them directly when authorized, then remove the log statements after verification.
+Temporary diagnostic logs do not need feature flags, configuration switches, or other runtime controls. Add them directly when authorized.
 
 ## Cleanup
 
-After diagnosis is complete and the fix is verified, remove all log statements added during the session. Keep the code clean.
+After verification passes, ask the user whether to clean up the debug logs added during diagnosis. If the user chooses cleanup, search for `[DEBUG]` and remove the log statements added during the session. If the user chooses to keep them, leave them in place.

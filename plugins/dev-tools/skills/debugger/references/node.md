@@ -23,4 +23,4 @@ console.error(`[DEBUG][API.request] ${JSON.stringify({
 })}`);
 ```
 
-Do not log secrets or full request bodies. Prefer counts, IDs, sizes, status codes, and short previews. If a payload can be circular, use a safe serializer before interpolation. Remove temporary `[DEBUG]` statements after the fix is verified.
+Do not log secrets or full request bodies. Prefer counts, IDs, sizes, status codes, and short previews. If a payload can be circular, use a safe serializer before interpolation.

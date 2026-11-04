@@ -35,4 +35,4 @@ except Exception as exc:
     raise
 ```
 
-Do not log credentials, tokens, or full sensitive payloads. Remove temporary `[DEBUG]` statements after verification, following the shared logging guide.
+Do not log credentials, tokens, or full sensitive payloads.

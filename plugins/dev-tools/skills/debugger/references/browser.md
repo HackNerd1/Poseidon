@@ -50,4 +50,4 @@ const toLogJson = (value) => {
 console.log(`[DEBUG][Store.update] ${toLogJson({ prev, next })}`);
 ```
 
-Do not use `console.log("value", value)` for diagnostic records. Remove all statements containing `[DEBUG]` after verification, as described in the shared guide.
+Do not use `console.log("value", value)` for diagnostic records.
