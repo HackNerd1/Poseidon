@@ -1,118 +1,93 @@
 # Poseidon
 
-Claude Code 插件大仓，覆盖开发提效、算法学习、简历准备、软考备考等多场景。
+**Claude Code、Codex、Cursor 共用的技能大仓：22 个技能覆盖开发提效、算法学习、简历求职与软考备考。**
 
-## 安装
+技能只在 `plugins/` 下维护一份源码，由仓库安装器按目标平台生成插件清单、marketplace 与 hooks，避免多平台配置各自漂移。
 
-### 方式一：添加 Marketplace 后安装（推荐）
+## 目录
 
-首次使用需注册本仓库为第三方 Marketplace，之后即可浏览和安装其中的插件：
+- [插件一览](#插件一览packages)
+- [快速开始](#快速开始)
+- [常用命令](#常用命令)
+- [架构](#架构)
+- [文档](#文档documentation)
+- [参与开发](#参与开发contributing)
+- [许可证](#许可证)
 
-```
-# 1. 注册 Marketplace
-/plugin marketplace add poseidon https://github.com/HackNerd1/Poseidon
+## 插件一览（Packages）
 
-# 2. 安装插件
-/plugin install dev-tools@poseidon
-/plugin install ruankao@poseidon
-/plugin install algo-coach@poseidon
-/plugin install resume@poseidon
-/plugin install outreach@poseidon
-```
+| 插件 | 适用场景 | 技能数 | 版本 | README |
+|------|----------|--------|------|--------|
+| `dev-tools` | 开发提效 — 代码实施、审查、计划、PR、文档同步、README 生成、诊断调试、桌面通知 | 8 | 0.2.0 | [README](plugins/dev-tools/README.md) |
+| `algo-coach` | 算法学习 — LeetCode 题目初始化、hello-algo 知识点关联、解法优化 | 3 | 0.1.0 | [README](plugins/algo-coach/README.md) |
+| `resume` | 简历与面试 — 项目经验提取、简历生成、多格式导出、面试准备 | 5 | 0.1.0 | [README](plugins/resume/README.md) |
+| `outreach` | 求职触达 — 打招呼语生成、自动投递简历（BOSS直聘、remotecn 远程岗搜索） | 2 | 0.2.0 | [README](plugins/outreach/README.md) |
+| `ruankao` | 软考备考 — 系统分析师论文写作、优化、帮记词、TTS 音频 | 4 | 0.1.0 | [README](plugins/ruankao/README.md) |
 
-> **Windows 用户注意**：若 `/plugin marketplace add` 不可用（官方 Marketplace 在 Windows 上未预注册），需先在 `~/.claude/settings.json` 中添加：
-> ```json
-> {
->   "extraKnownMarketplaces": {
->     "poseidon": {
->       "source": "https://github.com/HackNerd1/Poseidon"
->     }
->   }
-> }
-> ```
+插件与版本以 [`plugins/plugin-metadata.json`](plugins/plugin-metadata.json) 为准。
 
-### 方式二：本地安装
+## 快速开始
+
+前置条件：Python 3（安装器只用标准库）与 `git`；走 Claude Code 或 Codex 插件流程时需已安装对应 CLI，Cursor 只需复制技能目录。
 
 ```bash
 git clone https://github.com/HackNerd1/Poseidon.git
 cd Poseidon
-
-# 在 Claude Code 会话中安装
-/plugin install ./plugins/dev-tools
-/plugin install ./plugins/ruankao
-/plugin install ./plugins/algo-coach
-/plugin install ./plugins/resume
-/plugin install ./plugins/outreach
+python3 scripts/install.py
 ```
 
-## 插件
+不带参数会进入交互式安装：依次选择平台、插件、安装范围，确认后执行。安装器会读取 `plugins/plugin-metadata.json`，生成对应平台的插件包与 marketplace 清单，再调用平台 CLI 完成注册与安装。
 
-| 插件 | 路径 | 场景 |
-|------|------|------|
-| [dev-tools](./plugins/dev-tools/) | `plugins/dev-tools/` | 开发提效 — Debug 诊断、代码审查、桌面通知 |
-| [algo-coach](./plugins/algo-coach/) | `plugins/algo-coach/` | 算法学习 — LeetCode 刷题、知识点关联、解法优化 |
-| [resume](./plugins/resume/) | `plugins/resume/` | 简历与面试 — 项目提取、简历生成、格式转换、面试准备 |
-| [outreach](./plugins/outreach/) | `plugins/outreach/` | 求职触达 — 打招呼语生成，规划自动打招呼、自动投递 |
-| [ruankao](./plugins/ruankao/) | `plugins/ruankao/` | 软考系统分析师论文备考 — 论文写作、优化、帮记词、TTS 音频合成 |
+非交互式的一次性安装：
 
-### dev-tools 技能
+```bash
+python3 scripts/install.py --platform claude --scope user --plugin all
+```
 
-| 技能 | 说明 |
+把 `--platform` 换成 `codex` 或 `cursor`、把 `--scope` 换成 `repo` 即可切换平台或装到当前项目。
+
+生成物（`.claude/generated/`、`.codex/generated/`、`.cursor/skills/`、`.claude-plugin/marketplace.json`、`.agents/plugins/marketplace.json`）都在 `.gitignore` 中，修改技能后重跑安装器即可同步。
+
+## 常用命令
+
+| 命令 | 作用 |
 |------|------|
-| `code-review` | 代码审查 — 检查暂存/未暂存变更、架构对齐、最佳实践建议 |
-| `debugger` | 诊断调试 — 日志分析、白屏/渲染异常、数据不匹配等运行时问题排查 |
+| `python3 scripts/install.py` | 交互式安装 |
+| `python3 scripts/install.py --platform claude --scope user --plugin all` | 非交互安装全部插件 |
+| `python3 scripts/install.py --dry-run` | 只打印将要执行的操作，不写文件 |
+| `python3 scripts/install.py --generate-only` | 只生成插件包与清单，不注册平台插件 |
+| `python3 scripts/uninstall.py --platform claude --scope user --plugin all` | 卸载已安装插件 |
+| `python3 scripts/validate.py --all` | 校验各平台打包结果与技能元数据 |
 
-### dev-tools Hooks
-
-| 事件 | 说明 |
-|------|------|
-| `Stop` | Claude 响应完成 → 桌面通知 |
-| `PreToolUse` → `AskUserQuestion` | Claude 向用户提问 → 即时弹出通知 |
-| `Notification` → `permission_prompt` | Claude 需要工具权限审批 → 即时弹出通知 |
-| `Notification` → `idle_prompt` | Claude 空闲等待输入（~60s 延迟）→ 桌面通知 |
-
-通知支持点击后回到 Claude Code 窗口。配置位置：`plugins/dev-tools/hooks/hooks.json`，安装插件后自动生效。
-
-### algo-coach 技能
-
-| 技能 | 说明 |
-|------|------|
-| `init-problem` | 根据 LeetCode 链接初始化算法题文件，自动归类到题型目录 |
-| `link-knowledge` | 为算法题关联 hello-algo.com 知识点并添加解题思路 |
-| `optimize-solution` | 分析算法解法的可优化点，生成优化版本并标注改进原因 |
-
-### resume 技能
-
-| 技能 | 说明 |
-|------|------|
-| `extract-project` | 从 Git 仓库提取项目经验，生成符合 STAR/SARL 法则的简历文档 |
-| `extract-knowledge` | 从 Git 仓库挖掘核心业务场景、技术难点和关键设计，按业务/技术/设计三维度输出结构化知识文档 |
-| `create-resume` | 交互式创建完整简历，支持 JSON 导入和 JD 关键词匹配 |
-| `convert-md` | 使用 Resumx 将 Markdown 简历转换为 PDF、HTML、DOCX、PNG 等格式 |
-| `prep-interview` | 从简历提取技术栈与项目经验，生成结构化面试准备目录 |
-
-### outreach 技能
-
-| 技能 | 说明 |
-|------|------|
-| `gen-greeting` | 根据 JD 和个人经历生成高回复率打招呼语（主推版 + 超短版），证据分级匹配分析、平台最佳实践联网核查 |
-
-### ruankao 技能
-
-| 技能 | 说明 |
-|------|------|
-| `write-paper` | 从零写作完整论文：解析题干 → 逐段生成（摘要/背景/技术方法说明/论点展开/结尾）→ 帮记词 → 字数校验 |
-| `enhance-paper` | 论文诊断与优化：结构完整性检查、字数合规、段落重写/扩展/压缩、PRD 一致性校验、笔误修正 |
-| `teleprompter` | 为论文段落生成标准格式背诵提示（记忆线），统一为 `> 记忆线：... -> ...` 格式 |
-| `tts` | Markdown 论文转音频：自动过滤标题和引用行，调用 edge-tts 免费合成 mp3（微软神经语音） |
+全部参数见 `python3 scripts/install.py --help`、`scripts/uninstall.py --help`、`scripts/validate.py --help`。
 
 ## 架构
 
-详见 [docs/architecture.md](./docs/architecture.md)。
+```mermaid
+flowchart LR
+  Skills["plugins/*/skills"] --> Installer["scripts/install.py"]
+  Metadata["plugins/plugin-metadata.json"] --> Installer
+  Intents["plugins/dev-tools/hooks/intents"] --> Installer
+  Installer --> Claude[".claude/generated + .claude-plugin/marketplace.json"]
+  Installer --> Codex[".codex/generated + .agents/plugins/marketplace.json"]
+  Installer --> Cursor[".cursor/skills"]
+```
 
-## TODO
+`plugins/*/skills/` 是唯一的技能源码，`plugins/plugin-metadata.json` 是插件与 marketplace 元数据的唯一来源，`scripts/platforms.yaml` 描述各平台的安装路径与适配方式。hooks 同样只维护意图文件（`plugins/dev-tools/hooks/intents/*.yaml`），由安装器渲染成 Claude / Codex 的 `hooks.json`。设计与格式细节见 [架构文档](docs/architecture.md)。
 
-- [ ] 薪资计算
-- [ ] 非研发简历
-- [ ] 各种格式互转
-- [ ] 更新说明文档
+## 文档（Documentation）
+
+- [架构与 Skill 规范](docs/architecture.md) — Skill 目录与 frontmatter 格式、架构设计模式、大仓结构、编写最佳实践
+- [Skill 编写最佳实践](docs/claude-agent-skills-best-practices.md) — 官方指南整理：简洁原则、Skill 结构、渐进式披露
+- [岗位聚合平台需求](docs/requirements/job-feeds-aggregator.md) — auto-apply 的多平台岗位入口规划（待实现）
+
+## 参与开发（Contributing）
+
+- 新增或修改技能只改 `plugins/<插件>/skills/`，技能名使用小写连字符，并在 frontmatter 的 `description` 中写清触发条件。
+- 插件版本、描述、关键词只改 `plugins/plugin-metadata.json`，不要手写 `.claude-plugin/plugin.json` 或 `hooks/hooks.json`，它们由安装器生成。
+- 提交前运行 `python3 scripts/validate.py --all`，确认各平台打包结果与源码一致。
+- 详细的 Skill 结构与写法参考 [架构文档](docs/architecture.md) 与 [最佳实践](docs/claude-agent-skills-best-practices.md)。
+
+## 许可证
+
+[MIT License](LICENSE)，Copyright (c) 2026 HackNerd1。
