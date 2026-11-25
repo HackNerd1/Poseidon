@@ -7,7 +7,14 @@
 
 用法:
     python search.py --query "golang" [--city 101280600] [--pages 3] [--out jobs.json]
-    python search.py --config            # 按 ~/.poseidon/outreach/config.json 逐关键词搜索
+    python search.py --query "golang" --cities 101010100,101020100,100010000
+    python search.py --config            # 按 config.json 的 keywords × searchCities 搜索
+
+城市覆盖：--config 模式按 config.searchCities 逐个城市搜同一批关键词（未配置则回退到单个 city）。
+远程/兼职岗常挂在具体城市而不是「全国」，只搜全国会漏（2026-11-20 用户反馈）。
+config.city 仍是地域过滤口径（100010000 = 不按地域淘汰），searchCities 只扩大搜索面。
+所有城市在**一次进程**里搜完，只记 1 条会话；不要一城一进程（同日会话预算是弹层诱因）。
+--pages 是「每个关键词 × 每个城市」的页数，多城市时别照搬单城市的页数意图。
 
 输出: 岗位 JSON 文件；同日重跑自动把同名旧快照轮转为 -HHMM 后缀，不覆盖
 stdout 末行: RESULT <路径> stopped=<none|captcha|blank|no_api|daily_limit> fetched=<条数>
@@ -30,11 +37,30 @@ from _lib import (BOSS_DIR, CITIES, CONFIG_PATH, DEFAULT_CONFIG, config_gaps,
 JOBLIST = "joblist.json"
 
 
+def resolve_cities(cli_city: str | None, cli_cities: str | None, config: dict) -> list[str]:
+    """搜索城市集合：CLI --cities > CLI --city > config.searchCities > [config.city]。去重保序。"""
+    if cli_cities:
+        raw: object = cli_cities
+    elif cli_city:
+        raw = cli_city
+    else:
+        raw = config.get("searchCities") or config.get("city")
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    codes: list[str] = []
+    for c in raw or []:
+        c = str(c).strip()
+        if c and c not in codes:
+            codes.append(c)
+    return codes or [str(DEFAULT_CONFIG["city"])]
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Boss直聘岗位搜索")
     parser.add_argument("--query", help="搜索关键词")
-    parser.add_argument("--city", help="城市代码（默认取 config）")
-    parser.add_argument("--pages", type=int, help="每个关键词加载页数（每页 15 条）")
+    parser.add_argument("--city", help="城市代码（默认取 config.searchCities，未配置取 config.city）")
+    parser.add_argument("--cities", help="城市代码列表（逗号分隔，逐城搜索；优先于 --city 与 config.searchCities）")
+    parser.add_argument("--pages", type=int, help="每个关键词 × 每个城市的加载页数（每页 15 条）")
     parser.add_argument("--out", help="输出 JSON 路径")
     parser.add_argument("--config", action="store_true", help="使用 config.json 的 keywords")
     parser.add_argument("--job-type", dest="job_type", help="招聘类型筛选（1903=兼职），默认取 config.jobType")
@@ -48,7 +74,7 @@ def parse_args():
         parser.error("缺少 --query，或 --config 且 config.json 配置了 keywords")
     return argparse.Namespace(
         queries=queries,
-        city=args.city or str(config["city"]),
+        cities=resolve_cities(args.city, args.cities, config),
         job_type=str(args.job_type if args.job_type is not None else config.get("jobType", "") or ""),
         pages=args.pages or config["pages"],
         out=args.out or str(BOSS_DIR / f"jobs-{time.strftime('%Y-%m-%d')}.json"),
@@ -95,6 +121,77 @@ def map_job(raw: dict, query: str) -> dict:
     }
 
 
+def search_once(page, query: str, city: str, args, all_jobs: dict) -> str | None:
+    """搜索一个「关键词 × 城市」，结果并入 all_jobs。返回停止原因（None = 继续下一城）。"""
+    url = (f"https://www.zhipin.com/web/geek/job"
+           f"?query={query}&city={city}"
+           + (f"&jobType={args.job_type}" if args.job_type else ""))
+    print(f"[search] {query}@{CITIES.get(city, city)}: {url}")
+
+    # 首屏：拦截 SPA 自己发起的 joblist POST
+    # 有头模式等待更长：出现图形验证码时人工可在窗口里过验
+    def is_joblist(r):
+        return JOBLIST in r.url and r.request.method == "POST"
+    api_timeout = 180_000 if args.headed else 30_000
+    try:
+        with page.expect_response(is_joblist, timeout=api_timeout) as ri:
+            diag = goto_guarded(page, url)
+        if diag:
+            if not args.headed:
+                diag += "（当前窗口在当前应用下面，不在前台。可加 --headed 在前台人工过验后重试）"
+            print(f"RISK_BLANK {diag}")
+            return "blank"
+    except Exception:
+        shot(page, "search-no-api")
+        if is_captcha(page):
+            hint = "请运行 search.py --headed 在窗口中人工完成图形验证后重试；" \
+                   "频繁出现则降低频次冷却几分钟" 
+            print(f"CAPTCHA 搜索页触发安全验证（{hint}），截图已存")
+            return "captcha"
+        hint = "；可加 --headed 重试" if not args.headed else ""
+        print(f"未拦截到 joblist.json（可能未登录/风控/改版）{hint}，截图已存")
+        return "no_api"
+
+    if is_captcha(page):
+        shot(page, "search-captcha")
+        print("CAPTCHA 触发安全验证，需人工处理（见 screenshots/）")
+        return "captcha"
+
+    for p in range(1, args.pages + 1):
+        try:
+            data = ri.value.json()
+        except Exception:
+            shot(page, "search-body-lost")
+            hint = "" if args.headed else "（可加 --headed 重试）"
+            print(f"RISK_BLANK 数据响应体被页面跳转销毁（风控/加载异常）{hint}，截图已存")
+            return "blank"
+        zp = data.get("zpData", {})
+        raw_jobs = zp.get("jobList") or []
+        fresh = 0
+        for raw in raw_jobs:
+            job = map_job(raw, query)
+            if job["id"] and job["id"] not in all_jobs:
+                all_jobs[job["id"]] = job
+                fresh += 1
+        print(f"[search] 第{p}批 {len(raw_jobs)} 条，新增 {fresh}，累计 {len(all_jobs)}")
+
+        if not zp.get("hasMore", True) or p >= args.pages:
+            break
+
+        # 滚动到底触发下一批（SPA 无限加载）
+        try:
+            with page.expect_response(is_joblist, timeout=12_000) as ri_next:
+                for _ in range(8):
+                    page.mouse.wheel(0, random.randint(500, 900))
+                    rand_delay((0.3, 0.7))
+            ri = ri_next
+        except Exception:
+            print("[search] 滚动后无更多数据")
+            break
+        rand_delay((2, 4))
+    return None
+
+
 def main() -> int:
     args = parse_args()
     for k in args.ignored_keys:
@@ -107,7 +204,7 @@ def main() -> int:
     with sync_pw() as pw:
         ctx = launch(pw, visible=args.headed)
         try:
-            record_session("search")  # 一次进程一条，翻页不再累加
+            record_session("search")  # 一次进程一条，翻页/多城市不再累加
             page = first_page(ctx)
             if not has_login(ctx):
                 print("LOGIN_EXPIRED 登录态缺失，请先运行: python login.py")
@@ -115,83 +212,17 @@ def main() -> int:
 
             all_jobs: dict[str, dict] = {}
             stopped = None
+            print(f"[search] 城市: {'、'.join(CITIES.get(c, c) for c in args.cities)}"
+                  f"；关键词: {'、'.join(args.queries)}；每城每词 {args.pages} 页")
 
             for query in args.queries:
-                url = (f"https://www.zhipin.com/web/geek/job"
-                       f"?query={query}&city={args.city}"
-                       + (f"&jobType={args.job_type}" if args.job_type else ""))
-                print(f"[search] {query}: {url}")
-
-                # 首屏：拦截 SPA 自己发起的 joblist POST
-                # 有头模式等待更长：出现图形验证码时人工可在窗口里过验
-                def is_joblist(r):
-                    return JOBLIST in r.url and r.request.method == "POST"
-                api_timeout = 180_000 if args.headed else 30_000
-                try:
-                    with page.expect_response(is_joblist, timeout=api_timeout) as ri:
-                        diag = goto_guarded(page, url)
-                    if diag:
-                        if not args.headed:
-                            diag += "（当前窗口在当前应用下面，不在前台。可加 --headed 在前台人工过验后重试）"
-                        print(f"RISK_BLANK {diag}")
-                        stopped = "blank"
+                for city in args.cities:
+                    stopped = search_once(page, query, city, args, all_jobs)
+                    if stopped:
                         break
-                except Exception:
-                    shot(page, "search-no-api")
-                    if is_captcha(page):
-                        hint = "请运行 search.py --headed 在窗口中人工完成图形验证后重试；" \
-                               "频繁出现则降低频次冷却几分钟" 
-                        print(f"CAPTCHA 搜索页触发安全验证（{hint}），截图已存")
-                        stopped = "captcha"
-                    else:
-                        hint = "；可加 --headed 重试" if not args.headed else ""
-                        print(f"未拦截到 joblist.json（可能未登录/风控/改版）{hint}，截图已存")
-                        stopped = "no_api"
-                    break
-
-                if is_captcha(page):
-                    shot(page, "search-captcha")
-                    print("CAPTCHA 触发安全验证，需人工处理（见 screenshots/）")
-                    stopped = "captcha"
-                    break
-
-                for p in range(1, args.pages + 1):
-                    try:
-                        data = ri.value.json()
-                    except Exception:
-                        shot(page, "search-body-lost")
-                        hint = "" if args.headed else "（可加 --headed 重试）"
-                        print(f"RISK_BLANK 数据响应体被页面跳转销毁（风控/加载异常）{hint}，截图已存")
-                        stopped = "blank"
-                        break
-                    zp = data.get("zpData", {})
-                    raw_jobs = zp.get("jobList") or []
-                    fresh = 0
-                    for raw in raw_jobs:
-                        job = map_job(raw, query)
-                        if job["id"] and job["id"] not in all_jobs:
-                            all_jobs[job["id"]] = job
-                            fresh += 1
-                    print(f"[search] 第{p}批 {len(raw_jobs)} 条，新增 {fresh}，累计 {len(all_jobs)}")
-
-                    if not zp.get("hasMore", True) or p >= args.pages:
-                        break
-
-                    # 滚动到底触发下一批（SPA 无限加载）
-                    try:
-                        with page.expect_response(is_joblist, timeout=12_000) as ri_next:
-                            for _ in range(8):
-                                page.mouse.wheel(0, random.randint(500, 900))
-                                rand_delay((0.3, 0.7))
-                        ri = ri_next
-                    except Exception:
-                        print("[search] 滚动后无更多数据")
-                        break
-                    rand_delay((2, 4))
-
+                    rand_delay((2, 5))
                 if stopped:
                     break
-                rand_delay((2, 5))
 
             if is_daily_limit(page):
                 print("DAILY_LIMIT 今日沟通已达平台上限")
@@ -200,9 +231,10 @@ def main() -> int:
             jobs_list = list(all_jobs.values())
             payload = {
                 "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "city": args.city,
+                "city": args.cities[0],
+                "cities": args.cities,
+                "cityName": "、".join(CITIES.get(c, c) for c in args.cities),
                 "jobType": args.job_type,
-                "cityName": CITIES.get(args.city, args.city),
                 "query": args.queries,
                 "pages": args.pages,
                 "count": len(jobs_list),

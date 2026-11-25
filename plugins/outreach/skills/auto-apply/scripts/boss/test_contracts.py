@@ -18,6 +18,7 @@ import apply  # noqa: E402
 import detail  # noqa: E402
 import filter  # noqa: E402
 import login  # noqa: E402
+import search  # noqa: E402
 import _lib  # noqa: E402
 from _lib import (CookieReadError, config_gaps, cooldown_wait_sec, deadline_expired, editor_text,
                   history_text, parse_salary, profile_has_login, read_wt2_expiry,
@@ -84,6 +85,34 @@ class SkillContracts(unittest.TestCase):
         self.assertNotIn("playwright install chromium", text)
         search = Path(__file__).resolve().parent / "search.py"
         self.assertNotIn("无头模式", search.read_text(encoding="utf-8"))
+
+
+class MultiCityContracts(unittest.TestCase):
+    """远程/兼职岗常挂具体城市，只搜全国会漏：多城市在一次进程内搜完，city 仍作过滤口径。"""
+
+    def test_resolve_cities_precedence_and_dedupe(self):
+        self.assertEqual(search.resolve_cities(None, None, {"city": "100010000"}), ["100010000"])
+        cfg = {"city": "100010000", "searchCities": ["101280600", "100010000", "101280600"]}
+        self.assertEqual(search.resolve_cities(None, None, cfg), ["101280600", "100010000"])
+        self.assertEqual(search.resolve_cities("101010100", None, cfg), ["101010100"])
+        self.assertEqual(search.resolve_cities(None, "101010100, 101020100", cfg),
+                         ["101010100", "101020100"])
+
+    def test_plan_target_pages_are_per_keyword_per_city(self):
+        self.assertEqual(filter.plan_target(10, 1, cities=1)["pages_suggest"], 12)   # ceil(167/15)
+        self.assertEqual(filter.plan_target(10, 1, cities=4)["pages_suggest"], 3)    # ceil(167/60)
+
+    def test_confirm_shows_search_cities_or_parttime_hint(self):
+        text = filter.format_config_confirm(
+            {**_lib.DEFAULT_CONFIG, "searchCities": ["100010000", "101010100"]})
+        self.assertIn("searchCities=100010000(全国)、101010100(北京)", text)
+        parttime = filter.format_config_confirm({**_lib.DEFAULT_CONFIG, "jobType": "1903"})
+        self.assertIn("searchCities=<unset>", parttime)
+
+    def test_skill_teaches_multi_city_for_remote_parttime(self):
+        text = SKILL.read_text(encoding="utf-8")
+        self.assertIn("searchCities", text)
+        self.assertIn("不要只搜全国", text)
 
 
 class LoginCheck(unittest.TestCase):

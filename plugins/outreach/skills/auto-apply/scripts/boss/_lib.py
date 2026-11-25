@@ -81,7 +81,8 @@ CITIES = {
 DEFAULT_CONFIG: dict[str, Any] = {
     "platform": "boss",
     "keywords": [],
-    "city": "100010000",
+    "city": "100010000",     # 地域过滤口径（100010000=全国，不按地域淘汰）
+    "searchCities": [],      # 搜索城市集；远程/兼职常挂在具体城市，只搜全国会漏。空=只搜 city
     "jobType": "",          # 招聘类型筛选（1903=兼职），空=全部（探针验证）
     "pages": 2,
     "dailyLimit": 50,        # 保守值，平台硬上限约 100

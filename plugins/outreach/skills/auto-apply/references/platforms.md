@@ -8,6 +8,14 @@ auto-apply 的平台扩展点：每个平台一份连接手册（本目录），
 | 平台 | 状态 | 连接手册 | 脚本 | 说明 |
 |------|------|---------|------|------|
 | BOSS直聘 | ✅ 已实现 | [boss-zhipin.md](boss-zhipin.md) | `scripts/boss/` | 沟通=投递（打招呼即触达），无投递附件的独立入口 |
+| remotecn（feeds 直连） | ✅ 已实现 | [remotecn.md](remotecn.md) | `scripts/remotecn/` | 聚合站公开 API：电鸭+remote.com+realworkfromanywhere+rebase+阮一峰周刊；只查不落盘；投递=草稿人工发送 |
+
+### feeds 直连渠道（RSS/API 订阅，区别于浏览器自动化）
+
+- 约定：无 RSS/搜索能力的平台不做；有公开接口的平台**直连搜索、不落本地库**（用户决策 2026-11-11）
+- 已规划：V2EX 酷工作官方 Atom（`https://www.v2ex.com/feed/jobs.xml`，50 条≈2 天窗口）、电鸭官方 API（兜底）
+- 不做：Upwork（RSS 已 410，只能 headed 浏览器，单独立项）、RSSHub 公共实例（全被 Cloudflare 拦）、聚合站服务端参数不生效的源（Remotive/Jobicy/Himalayas 的搜索参数实测被忽略）
+
 | 猎聘 | 🗓 规划 | — | — | 同为沟通制；get_jobs 项目维护中，可参考其猎聘实现 |
 | 智联招聘 | 🗓 规划 | — | — | 简历投递制（需指定默认简历），投递上限约 100/日；get_jobs 已停更该平台 |
 | 前程无忧 51job | 🗓 规划 | — | — | 投递上限且限制搜索数量；get_jobs 已停更 |

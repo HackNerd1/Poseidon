@@ -1,6 +1,6 @@
 ---
 name: auto-apply
-description: 自动投递简历工作流：按用户简历与求职偏好，在招聘平台搜索岗位 → 智能筛选 → 生成打招呼语 → 按JD定制简历 → 执行投递。当前支持 BOSS直聘（Patchright 驱动本机 Chrome，扫码登录，频控+验证码人工介入）。当用户要求"自动投递简历"、"批量投简历"、"自动打招呼"、"boss直聘投递"、"筛选岗位并投递"、"今天投几条"时触发。仅限用户本人求职使用，默认人工确认制。
+description: 自动投递简历工作流：按用户简历与求职偏好，在招聘平台搜索岗位 → 智能筛选 → 生成打招呼语 → 按JD定制简历 → 执行投递。当前支持 BOSS直聘（Patchright 驱动本机 Chrome，扫码登录，频控+验证码人工介入）和 remotecn feeds 直连搜索（远程岗聚合）。当用户要求"自动投递简历"、"批量投简历"、"自动打招呼"、"boss直聘投递"、"筛选岗位并投递"、"今天投几条"、"搜远程岗位"、"remotecn 搜岗位"时触发。仅限用户本人求职使用，默认人工确认制。
 ---
 
 # 自动投递简历工作流（auto-apply）
@@ -48,7 +48,25 @@ $VENV/bin/pip install -r scripts/requirements.txt
 $VENV/bin/python scripts/boss/login.py    # 弹窗扫码，10 分钟超时
 ```
 
-配置不存在时先收集再写入：城市代码（`references/boss-zhipin.md`）、岗位词关键词（「前端/Electron」，不要「远程办公」）、`headed`、日上限、黑名单。兼职（`jobType=1903`）还必须有用户亲口给的 `hoursPerDay` 和 `salaryFloorDay`。`search.py --config` 缺这些字段会 `CONFIG_MISSING` 拒绝，不要用默认值绕过。`skipInactiveDays` 是死配置，脚本打印 `IGNORED`。
+配置不存在时先收集再写入：岗位词关键词（「前端/Electron」，不要「远程办公」）、`headed`、日上限、黑名单、地域（`city`，**过滤口径**；找远程/兼职时保持 `100010000` 全国，不按地域淘汰）和搜索城市集（`searchCities`，城市代码见 `references/boss-zhipin.md`）。兼职（`jobType=1903`）还必须有用户亲口给的 `hoursPerDay` 和 `salaryFloorDay`。`search.py --config` 缺这些字段会 `CONFIG_MISSING` 拒绝，不要用默认值绕过。`skipInactiveDays` 是死配置，脚本打印 `IGNORED`。
+
+**找远程/兼职不要只搜全国**：这类岗常挂在具体城市（北京/上海/广州/深圳/成都/杭州/苏州…），全国列表不全。先问用户要覆盖哪些城市，写入 `searchCities`（推荐城市集与代码见 `references/boss-zhipin.md`）；`CONFIG_CONFIRM` 里 `searchCities=<unset>` 的兼职提示就是在提醒这一步。
+
+## Feeds 直连渠道（remotecn，与 BOSS 工作流相互独立）
+
+面向远程岗/兼职的轻入口：直连 [remotecn.com](references/remotecn.md) 公开 API 搜索，**只查不落盘**（无订阅状态、无本地库，每次现拉）。一个源覆盖电鸭+remote.com+realworkfromanywhere+rebase+阮一峰周刊；不含 V2EX。
+
+```bash
+# 脚本相对本技能目录；纯 stdlib，无需 venv
+python3 scripts/remotecn/search.py --keyword "前端" --work-type parttime --region CN --days 30
+python3 scripts/remotecn/search.py --latest
+```
+
+用法约定：
+- 关键词先问用户（岗位词/工时偏好），不要自行猜词；`--keyword` 可传多次（OR）
+- 出表后按 `references/matching.md` 评分与边界分级；这是**跨平台评分**的第一处使用，阈值可与 BOSS 分开设
+- 端点/参数怪癖/降级策略见 `references/remotecn.md`；`FETCH_ERROR` 是退出码 3，向用户报告，不要静默重试
+- 该渠道产出的是「岗位+applyUrl+描述」，**没有站内会话**：投递=按 JD 生成招呼语/自荐信草稿（`gen-greeting`），由用户人工发送；台账仍记 `delivered.json`（key 用 `remotecn:<id>`）防 7 天重投
 
 ## 工作流
 
@@ -57,7 +75,7 @@ $VENV/bin/python scripts/boss/login.py    # 弹窗扫码，10 分钟超时
 ```
 投递进度:
 - [ ] login.py --check 已确认登录态（此步不弹窗）
-- [ ] 已询问今日目标 N；--show-config 已展示并经用户确认（含折算公式与弹窗位置）
+- [ ] 已询问今日目标 N；--show-config 已展示并经用户确认（含折算公式、搜索城市集、弹窗位置）
 - [ ] 搜索→筛选已循环到可投≥N 或源耗尽（ROUND new_candidates<2），未超额
 - [ ] 勾选前已批量拉详情，最终表含硬条件标；用户在已核实表上勾选
 - [ ] 招呼语已逐条确认；定制简历只落盘
@@ -110,6 +128,8 @@ $VENV/bin/python scripts/boss/filter.py --table --merge-rounds --new-only
 ```
 
 - 不要自定义 `--out`，否则同日快照对不上、去重失效。加页：`search.py --config --pages <更大>`。换关键词先问用户，不要自行加「远程办公」
+- `search.py --config` 按 `searchCities` 逐城搜同一批关键词，**一次进程搜完所有城市**（只记 1 条会话），按岗位 id 去重；不要一城一进程。没配 `searchCities` 时按首次使用的步骤补问，不要把全国一轮当成搜完
+- `--pages` 是「每关键词 × 每城市」页数；多城市时 `TARGET_PLAN` 的 `pages_suggest` 已按城市数摊薄，照它加页，不要沿用单城 3 页 × 7 城
 - stdout 末行 `RESULT ... stopped=... fetched=...`。`captcha`/`blank` 停，让用户处理；`no_api` 见故障排查
 - `ROUND new_candidates=<n>`：连续一轮 `<2` 即源耗尽，停搜并汇报「累计可投 Y/N」。`new_boundary` 不计入这条停机线
 - 这一轮的表只用来决定要不要加页，**不要拿给用户勾选**。评分读 TSV，不要读 `jobs`/`candidates` JSON。标准见 `references/matching.md`。列表可投仍远小于 N 时，阈值可从 70 降到 65 **一次**
@@ -192,6 +212,7 @@ $VENV/bin/python scripts/boss/apply.py --set-reply <岗位id> read
 
 - `references/platforms.md` — 平台索引
 - `references/boss-zhipin.md` — 连接手册（登录/URL/选择器/风控/diag）
+- `references/remotecn.md` — feeds 直连渠道手册（API 参数/字段/降级）
 - `references/matching.md` — 评分、边界分级、硬条件标
 
 ## 合规边界

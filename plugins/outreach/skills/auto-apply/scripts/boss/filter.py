@@ -411,13 +411,22 @@ def format_config_confirm(cfg: dict, *, probe_window: bool = False) -> str:
     hpd = cfg.get("hoursPerDay")
     floor = cfg.get("salaryFloorDay")
     city = str(cfg.get("city") or "")
+    search_cities = [str(c) for c in (cfg.get("searchCities") or [])]
+    if search_cities:
+        names = "、".join(f"{c}({CITIES.get(c, c)})" for c in search_cities)
+        city_line = f"searchCities={names}（逐城搜索；city 仍是地域过滤口径）"
+    elif str(cfg.get("jobType") or "") == "1903":
+        city_line = "searchCities=<unset>（兼职/远程岗常挂在具体城市，只搜全国会漏；先问用户城市集再写入）"
+    else:
+        city_line = None
     lines = [
         "CONFIG_CONFIRM",
         f"headed={cfg.get('headed', '<unset>')}",
         f"jobType={cfg.get('jobType') or '<全部>'}",
         f"keywords={','.join(cfg.get('keywords') or []) or '<unset>'}",
         f"city={city} ({CITIES.get(city, city or '<unset>')})",
-        f"pages={cfg.get('pages', '<unset>')}",
+        *([city_line] if city_line else []),
+        f"pages={cfg.get('pages', '<unset>')}（每个关键词 × 每个城市的页数）",
         f"dailyLimit={cfg.get('dailyLimit', '<unset>')}",
         f"hoursPerDay={hpd if hpd is not None else '<unset>'}（每天实际工时；必须用户本人确认，不得默认 8）",
         f"salaryFloorDay={floor if floor is not None else '<unset>'}",
@@ -442,21 +451,24 @@ def format_config_confirm(cfg: dict, *, probe_window: bool = False) -> str:
     return "\n".join(lines)
 
 
-def plan_target(target: int, keywords: int, already: int = 0) -> dict:
-    """按详情前转化率估算还要抓多少。不启动浏览器，也不保证详情复核后仍够 N。"""
+def plan_target(target: int, keywords: int, already: int = 0, cities: int = 1) -> dict:
+    """按详情前转化率估算还要抓多少。pages 是「每个关键词 × 每个城市」页数，多城市要除以城市数。
+    不启动浏览器，也不保证详情复核后仍够 N。"""
     need = math.ceil(target / VIABLE_RATE) if target > 0 else 0
     remain = max(0, need - max(already, 0))
     kw = max(int(keywords or 1), 1)
-    pages = math.ceil(remain / (PAGE_SIZE * kw)) if remain else 0
+    city_n = max(int(cities or 1), 1)
+    pages = math.ceil(remain / (PAGE_SIZE * kw * city_n)) if remain else 0
     return {"target": target, "viable_rate": VIABLE_RATE, "fetched_needed": need,
-            "already": already, "keywords": kw, "pages_suggest": pages}
+            "already": already, "keywords": kw, "cities": city_n, "pages_suggest": pages}
 
 
 def format_target_plan(plan: dict) -> str:
     return (f"TARGET_PLAN target={plan['target']} viable_rate={plan['viable_rate']} "
             f"fetched_needed={plan['fetched_needed']} already={plan['already']} "
             f"pages_suggest={plan['pages_suggest']} keywords={plan['keywords']} "
-            "note=规划用详情前转化；达标即停，不超额投，频控红线不变")
+            f"cities={plan.get('cities', 1)} "
+            "note=pages 是每关键词 × 每城市的页数；规划用详情前转化；达标即停，不超额投，频控红线不变")
 
 
 def _latest_jobs() -> Path | None:
@@ -513,7 +525,8 @@ def main() -> int:
         write_json(config_path, raw_cfg)
         print(f"CONFIG_ACK {raw_cfg['confirmedAt']}")
     if args.plan_target is not None:
-        plan = plan_target(args.plan_target, len(raw_cfg.get("keywords") or []), args.already)
+        plan = plan_target(args.plan_target, len(raw_cfg.get("keywords") or []), args.already,
+                           cities=len(raw_cfg.get("searchCities") or []) or 1)
         print(format_target_plan(plan))
     confirm_only = (args.show_config or args.ack or args.plan_target is not None) and not (
         args.table or args.jobs or args.merge_rounds)
