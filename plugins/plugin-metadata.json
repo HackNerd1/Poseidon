@@ -25,8 +25,8 @@
       "category": "Education"
     },
     "dev-tools": {
-      "version": "0.1.4",
-      "description": "开发提效工具集 — 覆盖 Debug 诊断、代码审查辅助、日志分析等开发场景",
+      "version": "0.2.0",
+      "description": "开发提效工具集 — 覆盖 Debug 诊断、代码审查、README 生成、文档同步等开发场景",
       "author": {
         "name": "Hansel"
       },
@@ -36,7 +36,10 @@
         "diagnostic",
         "logging",
         "troubleshooting",
-        "dev-tools"
+        "dev-tools",
+        "readme",
+        "documentation",
+        "gen-readme"
       ],
       "category": "Development"
     },

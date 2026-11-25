@@ -1,6 +1,6 @@
 # Dev-Tools 插件
 
-开发提效工具集，包含诊断调试、代码审查、PR/MR 创建和桌面通知。
+开发提效工具集，包含诊断调试、代码审查、PR/MR 创建、README 生成和桌面通知。
 
 ## Skills
 
@@ -13,6 +13,7 @@
 | `doc-sync` | 本地 Markdown ↔ 飞书/Notion 同步 | 选择 feishu/notion 存储、创建/更新/拉取远端文档、维护 doc-map；可被 `plan` 通过 `/doc-sync` 调用 |
 | `code-agent` | 代码实施（主）+ 计划生成支持（附） | 第一性原理定位落点/复用封装、对齐现有风格后实现并验收；附带为 plan 提供 planning prompt；可被 `/code-agent` 直接或由 plan 调用 |
 | `extra-knowledge` | 代码仓库知识提取 | 分析代码仓库中值得学习的设计模式和工程思路：项目扫描与模块映射 → 并行模块深度分析 → 输出结构化知识报告到 `.Poseidon/extra-knowledge/` |
+| `gen-readme` | 生成/改写/审查 README | 按仓库事实选择 library / cli / app / monorepo / internal-service 风格模板；支持 monorepo 根/子包 README，起草前确认范围/风格/模块；可选 banner、技术栈图标、图表、贡献者等增强区块，最后用确定性脚本审计 |
 
 ## Hooks
 
