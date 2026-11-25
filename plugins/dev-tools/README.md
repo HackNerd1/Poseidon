@@ -1,8 +1,8 @@
 # dev-tools
 
-**开发提效插件 —— 覆盖代码实施、代码审查、需求计划、PR 创建、文档同步、README 生成、知识提取与诊断调试。**
+**开发提效插件 —— 覆盖代码实施、代码审查、需求计划、PR 创建、变更集生成、文档同步、README 生成、知识提取与诊断调试。**
 
-技能按开发流程串联：`plan` 澄清需求并拆分任务，`code-agent` 落地实现，`code-review` 审查变更，`pr` 提交 PR/MR；`debugger`、`doc-sync`、`extra-knowledge`、`gen-readme` 覆盖独立场景。
+技能按开发流程串联：`plan` 澄清需求并拆分任务，`code-agent` 落地实现，`code-review` 审查变更，`gen-changeset` 生成变更集/发版说明，`pr` 提交 PR/MR；`debugger`、`doc-sync`、`extra-knowledge`、`gen-readme` 覆盖独立场景。
 
 ## 技能一览
 
@@ -12,6 +12,7 @@
 | `code-agent` | 主责代码实施：按第一性原理定位落点、做复用/封装决策、对齐现有风格后实现并验收 | “实现这个任务”“按计划写代码”，或由 `plan` 派发 |
 | `code-review` | 第一性原理代码审查：正确性、冗余设计、文档-代码一致性、架构边界、PR 审查 | “review code”“代码审查”“检查暂存变更” |
 | `pr` | 创建 PR/MR：自动识别 GitHub / GitLab / Gitea，本地起草描述，确认后用 gh / glab / tea 提交 | “create PR”“提交 PR”“open merge request” |
+| `gen-changeset` | 生成 changeset / 变更说明：识别 Changesets、release-please、semantic-release 等发版工具，按公开影响选择 major/minor/patch，写 WHAT/WHY/HOW 摘要与大版本迁移说明，并用脚本校验 | “生成 changeset”“加变更说明”“写 changelog”“该升哪个版本” |
 | `debugger` | 诊断式 Debug：日志分析、白屏/渲染异常、数据不符预期等运行时问题排查 | 粘贴日志或描述 Bug 现象 |
 | `doc-sync` | 本地 Markdown 与飞书 / Notion 同步：创建、更新、拉取远端文档，维护 doc-map | “同步飞书文档”“同步 Notion” |
 | `extra-knowledge` | 代码仓库知识提取：项目扫描与模块映射 → 并行模块分析 → 输出知识报告到 `.Poseidon/extra-knowledge/` | “从这个仓库提取知识”“分析值得学习的设计” |

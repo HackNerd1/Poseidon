@@ -1,6 +1,6 @@
 # Poseidon
 
-**Claude Code、Codex、Cursor 共用的技能大仓：22 个技能覆盖开发提效、算法学习、简历求职与软考备考。**
+**Claude Code、Codex、Cursor 共用的技能大仓：23 个技能覆盖开发提效、算法学习、简历求职与软考备考。**
 
 技能只在 `plugins/` 下维护一份源码，由仓库安装器按目标平台生成插件清单、marketplace 与 hooks，避免多平台配置各自漂移。
 
@@ -18,7 +18,7 @@
 
 | 插件 | 适用场景 | 技能数 | 版本 | README |
 |------|----------|--------|------|--------|
-| `dev-tools` | 开发提效 — 代码实施、审查、计划、PR、文档同步、README 生成、诊断调试、桌面通知 | 8 | 0.2.0 | [README](plugins/dev-tools/README.md) |
+| `dev-tools` | 开发提效 — 代码实施、审查、计划、PR、变更集生成、文档同步、README 生成、诊断调试、桌面通知 | 9 | 0.3.0 | [README](plugins/dev-tools/README.md) |
 | `algo-coach` | 算法学习 — LeetCode 题目初始化、hello-algo 知识点关联、解法优化 | 3 | 0.1.0 | [README](plugins/algo-coach/README.md) |
 | `resume` | 简历与面试 — 项目经验提取、简历生成、多格式导出、面试准备 | 5 | 0.1.0 | [README](plugins/resume/README.md) |
 | `outreach` | 求职触达 — 打招呼语生成、自动投递简历（BOSS直聘、remotecn 远程岗搜索） | 2 | 0.2.0 | [README](plugins/outreach/README.md) |
